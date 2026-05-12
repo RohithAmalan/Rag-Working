@@ -1,0 +1,41 @@
+# Environment
+.venv/
+.env
+.env.local
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend specific
+backend/app/uploads/
+backend/app/vectorstore/
+backend/app/logs/
+*.log
+
+# Frontend specific
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Misc
+*.pid
+temp/

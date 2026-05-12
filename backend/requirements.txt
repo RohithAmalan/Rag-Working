@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pandas
+openpyxl
+pypdf
+pydantic-settings
+groq
+motor
+pymongo
+langchain
+langchain-community
+langchain-openai
+sentence-transformers
+python-dotenv

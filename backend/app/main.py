@@ -1,0 +1,83 @@
+import warnings
+
+# Suppress harmless multiprocessing warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
+from app.routes.rag_routes import router as rag_router
+from app.routes.system_routes import router as system_router
+from app.services.faiss_rag_service import FaissRagService
+from app.services.rag_service import RagService
+from app.utils.config import settings
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+app = FastAPI(title=settings.app_name, version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(system_router)
+app.include_router(rag_router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize MongoDB and RAG service on startup."""
+    logger.info("Starting RAG application")
+    app.state.rag_service = None
+    app.state.storage_backend = "uninitialized"
+
+    # Connect to MongoDB
+    try:
+        await connect_to_mongo()
+        logger.info("MongoDB connection established")
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {e}")
+        if settings.allow_start_without_mongo:
+            logger.warning(
+                "Starting in FAISS fallback mode because ALLOW_START_WITHOUT_MONGO=true. "
+                "Fix MongoDB credentials in .env to switch back to Atlas."
+            )
+            faiss_service = FaissRagService()
+            faiss_service.startup()
+            app.state.rag_service = faiss_service
+            app.state.storage_backend = "faiss-fallback"
+            logger.info("FAISS fallback service initialized successfully")
+            return
+        raise
+
+    # Initialize RAG service
+    try:
+        db = get_database()
+        rag_service = RagService(db)
+        app.state.rag_service = rag_service
+        app.state.storage_backend = "mongodb"
+        logger.info("RAG service initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize RAG service: {e}")
+        raise
+
+    # Get stats
+    try:
+        stats = await rag_service.get_vector_store_stats()
+        logger.info(f"Vector store ready: {stats}")
+    except Exception as e:
+        logger.warning(f"Could not retrieve stats: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close MongoDB connection on shutdown."""
+    logger.info("Shutting down RAG application")
+    await close_mongo_connection()
+    logger.info("MongoDB connection closed")

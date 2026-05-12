@@ -1,0 +1,6 @@
+app/uploads/files/*
+!app/uploads/files/.gitkeep
+app/vectorstore/data/
+app/vectorstore/chunk_cache.json
+*.pyc
+__pycache__/
