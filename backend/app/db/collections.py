@@ -26,12 +26,14 @@ class DocumentsCollection:
         filename: str,
         file_type: str,
         path: str,
+        metadata: dict[str, Any] | None = None,
     ) -> ObjectId:
         """Insert document metadata."""
         doc = {
             "filename": filename,
             "file_type": file_type,
             "path": path,
+            "metadata": metadata or {},
             "uploaded_at": datetime.utcnow(),
         }
         result = await self.collection.insert_one(doc)

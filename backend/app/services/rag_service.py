@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.rag.chunking import chunk_pdf_texts, dataframe_to_documents
 from app.services.file_service import FileService
+from app.services.minio_service import MinioService
 from app.services.mongo_vector_service import MongoVectorService
 from app.utils.config import settings
 
@@ -27,6 +28,7 @@ class RagService:
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
         )
+        self.minio_service = MinioService()
         self.vector_service = MongoVectorService(db)
 
     async def upload_and_process_files(
@@ -51,10 +53,18 @@ class RagService:
         }
 
         for file in files:
+            saved_path = None
             try:
                 # Save uploaded file
                 saved_path = await self.file_service.save_upload(file)
                 logger.info(f"Saved file: {saved_path}")
+
+                storage_info = self.minio_service.upload_file(saved_path, file.filename or saved_path.name)
+                if settings.minio_enabled and storage_info.get("storage_backend") != "minio":
+                    raise RuntimeError(
+                        "MinIO is enabled, but object upload failed. Local storage is disabled for uploads."
+                    )
+                file_report = self.file_service.analyze_file(saved_path)
 
                 # Process file using existing file_service
                 documents = self.file_service.process_file(saved_path)
@@ -76,15 +86,24 @@ class RagService:
                 result = await self.vector_service.store_document_chunks(
                     filename=file.filename,
                     file_type=file_type,
-                    path=str(saved_path),
+                    path=storage_info.get("storage_path", str(saved_path)),
                     chunk_texts=chunk_texts,
                     chunk_metadata_list=chunk_metadata_list,
                     source_priority=source_priority,
+                    document_metadata={
+                        **storage_info,
+                        "analysis_report": file_report,
+                        "chunks_stored": len(chunk_texts),
+                    },
                 )
 
                 stats["processed_files"] += 1
                 stats["total_chunks"] += result["chunks_stored"]
-                stats["documents"].append(result)
+                stats["documents"].append({
+                    **result,
+                    "storage_backend": storage_info.get("storage_backend", "local"),
+                    "analysis_report": file_report,
+                })
 
                 logger.info(
                     f"Successfully processed {file.filename}: "
@@ -94,6 +113,12 @@ class RagService:
             except Exception as e:
                 logger.error(f"Error processing {file.filename}: {e}")
                 stats["errors"].append(f"{file.filename}: {str(e)}")
+            finally:
+                if saved_path is not None and saved_path.exists():
+                    try:
+                        saved_path.unlink(missing_ok=True)
+                    except Exception as unlink_exc:
+                        logger.warning(f"Could not remove local temp file {saved_path}: {unlink_exc}")
 
         logger.info(f"Upload processing complete: {stats}")
         return stats
@@ -122,14 +147,32 @@ class RagService:
                 source_priority="primary",
             )
 
+            # If we already have a strong exact/structured primary match,
+            # avoid diluting the answer with secondary support chunks.
+            has_strong_primary_match = any(
+                float(result.get("similarity_score", 0.0)) >= 0.95
+                for result in results
+            )
+
             # If not enough primary results, add secondary
-            if len(results) < top_k:
+            if len(results) < top_k and not has_strong_primary_match:
                 secondary_results = await self.vector_service.search_chunks(
                     query_text=query,
                     top_k=top_k - len(results),
                     source_priority="secondary",
                 )
                 results.extend(secondary_results)
+
+            # Safety net: if an exact/strong primary hit exists, only return
+            # primary chunks even if a secondary expansion happened.
+            if any(float(result.get("similarity_score", 0.0)) >= 0.95 for result in results):
+                primary_only = [
+                    result
+                    for result in results
+                    if result.get("metadata", {}).get("source_priority") == "primary"
+                ]
+                if primary_only:
+                    results = primary_only[:top_k]
 
             logger.info(f"Retrieved {len(results)} relevant chunks")
             return results
@@ -159,7 +202,10 @@ class RagService:
             Statistics dictionary
         """
         try:
-            stats = await self.vector_service.get_stats()
+            if hasattr(self.vector_service, "get_vector_store_stats"):
+                stats = await self.vector_service.get_vector_store_stats()
+            else:
+                stats = await self.vector_service.get_stats()
             logger.info(f"Vector store stats: {stats}")
             return stats
         except Exception as e:

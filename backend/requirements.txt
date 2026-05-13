@@ -13,3 +13,4 @@ langchain-community
 langchain-openai
 sentence-transformers
 python-dotenv
+minio

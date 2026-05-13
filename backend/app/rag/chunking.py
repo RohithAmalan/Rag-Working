@@ -37,7 +37,15 @@ def _normalize_cell(value) -> str:
 
 def dataframe_to_documents(df, file_name: str, source_type: str, sheet_name: str | None = None) -> list[dict[str, Any]]:
     """Convert DataFrame rows to documents with enhanced searchability for lookups."""
+    import re as _re
+
     docs: list[dict[str, Any]] = []
+    # Drop columns that are purely unnamed index artifacts (Unnamed: 0, Unnamed: 1, …)
+    real_cols = [col for col in df.columns if not _re.fullmatch(r"Unnamed:\s*\d+", str(col).strip())]
+    if real_cols:
+        df = df[real_cols]
+    # Drop rows where every cell is NaN/empty
+    df = df.dropna(how="all").reset_index(drop=True)
     columns = [str(col).strip() for col in df.columns]
 
     for row_index, row in df.iterrows():

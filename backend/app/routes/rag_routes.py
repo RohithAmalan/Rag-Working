@@ -197,7 +197,11 @@ async def list_documents(rag_service: RagService = Depends(get_rag_service)):
                 {
                     "file_name": doc.get("filename", ""),
                     "source_type": doc.get("file_type", "unknown"),
-                    "chunks": 0,  # Will be calculated from chunks collection in future
+                    "chunks": doc.get("metadata", {}).get("chunks_stored", 0),
+                    "storage_backend": doc.get("metadata", {}).get("storage_backend", "local"),
+                    "storage_path": doc.get("path", ""),
+                    "storage_url": doc.get("metadata", {}).get("storage_url", ""),
+                    "analysis_report": doc.get("metadata", {}).get("analysis_report", {}),
                 }
                 for doc in documents
             ],

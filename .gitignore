@@ -39,3 +39,4 @@ htmlcov/
 # Misc
 *.pid
 temp/
+.minio-data/

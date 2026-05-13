@@ -22,10 +22,17 @@ export default function App() {
     documents: [],
   });
 
+  const normalizeDocuments = (data) => ({
+    total_chunks: data?.total_chunks ?? data?.stats?.total_chunks ?? 0,
+    primary_chunks: data?.primary_chunks ?? data?.stats?.primary_chunks ?? 0,
+    secondary_chunks: data?.secondary_chunks ?? data?.stats?.secondary_chunks ?? 0,
+    documents: Array.isArray(data?.documents) ? data.documents : [],
+  });
+
   const loadDocuments = async () => {
     try {
       const data = await fetchDocuments();
-      setDocuments(data);
+      setDocuments(normalizeDocuments(data));
     } catch {
       setDocuments((prev) => prev);
     }
@@ -33,6 +40,13 @@ export default function App() {
 
   useEffect(() => {
     loadDocuments();
+
+    // Keep dashboard stats/files fresh even if backend starts after frontend.
+    const intervalId = setInterval(() => {
+      loadDocuments();
+    }, 10000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const handleUpload = async () => {

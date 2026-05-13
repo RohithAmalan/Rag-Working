@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     vector_dir: Path = Field(default=Path("app/vectorstore/data"))
     cache_file: Path = Field(default=Path("app/vectorstore/chunk_cache.json"))
 
+    # MinIO Configuration (optional)
+    minio_enabled: bool = Field(default=False, validation_alias="MINIO_ENABLED")
+    minio_endpoint: str = Field(default="", validation_alias="MINIO_ENDPOINT")
+    minio_access_key: str = Field(default="", validation_alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="", validation_alias="MINIO_SECRET_KEY")
+    minio_bucket: str = Field(default="rag-files", validation_alias="MINIO_BUCKET")
+    minio_secure: bool = Field(default=False, validation_alias="MINIO_SECURE")
+
     # Chunking Configuration
     chunk_size: int = Field(default=900, validation_alias="CHUNK_SIZE")
     chunk_overlap: int = Field(default=120, validation_alias="CHUNK_OVERLAP")

@@ -30,7 +30,7 @@ export default function UploadPanel({ files, onPickFiles, onUpload, uploading, u
 
       {uploadResult && (
         <p className="mt-3 text-sm text-mint">
-          Indexed {uploadResult.processed_files} files ({uploadResult.primary_chunks} primary, {uploadResult.secondary_chunks} secondary chunks)
+          Indexed {uploadResult.processed_files} files ({uploadResult.total_chunks || 0} chunks)
         </p>
       )}
       {error && <p className="mt-3 text-sm text-coral">{error}</p>}
