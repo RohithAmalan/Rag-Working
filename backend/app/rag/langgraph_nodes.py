@@ -1,4 +1,4 @@
-"""LangGraph nodes for RAG workflow - Phase 1 & 2."""
+"""LangGraph nodes for RAG workflow - Phase 1 & 2 with Advanced Features."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from typing import Any, Literal
 from app.rag.langgraph_state import AgentState
 from app.services.mongo_vector_service import MongoVectorService
 from app.rag.generator import generate_answer
+from app.rag.reranker import get_reranker_service
+from app.rag.citation_generator import get_citation_generator
 
 logger = logging.getLogger(__name__)
 
@@ -71,47 +73,66 @@ async def retrieve_node(
     state: AgentState,
     mongo_service: MongoVectorService,
 ) -> dict[str, Any]:
-    """Node 2: Retrieve chunks from MongoDB using hybrid search.
+    """Node 2: Retrieve chunks from MongoDB using hybrid search with reranking.
     
-    Uses the existing mongo_vector_service.search_chunks method.
+    Steps:
+    1. Retrieve top-k*3 candidates using hybrid search
+    2. Rerank using cross-encoder
+    3. Return top-k best chunks
     """
     question = state["question"]
     selected_file = state.get("selected_file")
-    top_k = state.get("top_k", 15)
+    top_k = state.get("top_k", 6)
     
     workflow_path = state.get("workflow_path", [])
     workflow_path.append("retrieve")
     
     try:
+        # Retrieve more candidates for reranking (3x top_k)
+        candidate_count = min(top_k * 3, 50)  # Max 50 candidates
+        
+        logger.info(f"Retrieving {candidate_count} candidates for reranking")
+        
         # Use existing hybrid search
         chunks = await mongo_service.search_chunks(
             query_text=question,
-            top_k=top_k,
+            top_k=candidate_count,
             required_file_name=selected_file,
             source_priority="primary",
         )
         
+        # Rerank chunks using cross-encoder
+        reranker = get_reranker_service()
+        reranked_chunks = reranker.rerank(
+            query=question,
+            chunks=chunks,
+            top_k=top_k
+        )
+        
         # Determine strategy used
         if state.get("requires_exact_match"):
-            strategy = "exact"
+            strategy = "exact+rerank"
         elif state.get("requires_ranking"):
-            strategy = "ranking"
+            strategy = "ranking+rerank"
         elif chunks and chunks[0].get("similarity_score", 0) > 0.95:
-            strategy = "hybrid"
+            strategy = "hybrid+rerank"
         else:
-            strategy = "vector"
+            strategy = "vector+rerank"
         
-        logger.info(f"Retrieved {len(chunks)} chunks using strategy: {strategy}")
+        logger.info(
+            f"Retrieved and reranked {len(chunks)} → {len(reranked_chunks)} chunks "
+            f"(strategy: {strategy}, top score: {reranked_chunks[0].get('rerank_score', 0):.3f})"
+        )
         
         return {
-            "retrieved_chunks": chunks,
+            "retrieved_chunks": reranked_chunks,
             "retrieval_strategy": strategy,
             "workflow_path": workflow_path,
             "errors": state.get("errors", []),
         }
         
     except Exception as e:
-        logger.error(f"Retrieval failed: {e}")
+        logger.error(f"Retrieval/reranking failed: {e}")
         errors = state.get("errors", [])
         errors.append(f"Retrieval error: {str(e)}")
         
@@ -124,9 +145,9 @@ async def retrieve_node(
 
 
 async def generate_node(state: AgentState) -> dict[str, Any]:
-    """Node 3: Generate answer from retrieved chunks.
+    """Node 3: Generate answer with citations from retrieved chunks.
     
-    Uses the existing generate_answer function.
+    Uses citation-aware generation for better answer quality.
     """
     from app.utils.config import settings
     
@@ -137,6 +158,77 @@ async def generate_node(state: AgentState) -> dict[str, Any]:
     workflow_path.append("generate")
     
     try:
+        # Get citation generator
+        citation_gen = get_citation_generator()
+        
+        # Prepare chunks for citation generation
+        formatted_chunks = []
+        source_types = set()
+        
+        for chunk in chunks:
+            # Extract text from chunk
+            text = chunk.get("chunk_text", "")
+            if not text:
+                text = chunk.get("text", "")
+            
+            # Extract metadata
+            metadata = chunk.get("metadata", {})
+            file_name = metadata.get("file_name", "unknown")
+            source_type = metadata.get("source_type", "unknown")
+            
+            if source_type:
+                source_types.add(source_type)
+            
+            # Format chunk for citation generator
+            formatted_chunks.append({
+                "text": text,
+                "file_name": file_name,
+                "source_type": source_type,
+                "row_number": metadata.get("row_index"),
+                "page_number": metadata.get("page_number"),
+                "similarity_score": chunk.get("similarity_score", 0),
+                "rerank_score": chunk.get("rerank_score", 0),
+            })
+        
+        # Generate answer with citations
+        result = citation_gen.generate_with_citations(
+            question=question,
+            chunks=formatted_chunks,
+            source_types=source_types
+        )
+        
+        answer = result["answer"]
+        citations = citation_gen.format_citations_for_display(result["citations"])
+        
+        # Calculate confidence based on rerank scores
+        if not chunks:
+            confidence = 0.0
+        elif "don't know" in answer.lower() or "not in" in answer.lower():
+            confidence = 0.3
+        else:
+            # Use average rerank score
+            rerank_scores = [c.get("rerank_score", 0) for c in formatted_chunks]
+            if rerank_scores:
+                confidence = min(sum(rerank_scores) / len(rerank_scores), 1.0)
+            else:
+                confidence = 0.5
+        
+        logger.info(
+            f"Generated answer with {len(citations)} citations "
+            f"(confidence: {confidence:.2f})"
+        )
+        
+        return {
+            "answer": answer,
+            "citations": citations,
+            "confidence": confidence,
+            "needs_refinement": False,
+            "workflow_path": workflow_path,
+            "errors": state.get("errors", []),
+        }
+        
+    except Exception as e:
+        logger.error(f"Generation failed: {e}")
         # Build context string from chunks
         context_parts = []
         source_types = set()

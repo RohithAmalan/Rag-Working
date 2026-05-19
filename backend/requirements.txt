@@ -23,3 +23,7 @@ pytest-asyncio
 pytest-cov
 httpx  # for testing FastAPI
 pytest-mock
+
+# Advanced RAG
+ragas  # RAG evaluation framework
+datasets  # for evaluation datasets

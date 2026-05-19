@@ -87,6 +87,42 @@ export default function ChatPanel({
               )}
             </div>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{item.text}</p>
+            
+            {/* Display citations if available */}
+            {item.role === "assistant" && item.citations && item.citations.length > 0 && (
+              <div className="mt-3 border-t border-mint/20 pt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/60">
+                  📚 Sources ({item.citations.length})
+                </p>
+                <div className="space-y-2">
+                  {item.citations.map((citation, citIdx) => (
+                    <div 
+                      key={citIdx}
+                      className="rounded-lg border border-mint/20 bg-white/60 p-2 text-xs"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="flex-shrink-0 font-bold text-mint">[{citation.number}]</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-ink">
+                            {citation.file_name}
+                            {citation.page_number && ` • Page ${citation.page_number}`}
+                            {citation.row_number && ` • Row ${citation.row_number}`}
+                          </p>
+                          {citation.text_preview && (
+                            <p className="mt-1 text-ink/60 line-clamp-2">
+                              {citation.text_preview}
+                            </p>
+                          )}
+                          <span className="mt-1 inline-block rounded px-2 py-0.5 text-[10px] font-medium uppercase bg-mint/10 text-mint">
+                            {citation.source_type}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {loading && (

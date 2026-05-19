@@ -146,7 +146,16 @@ export default function App() {
       const asksBroadList = /(\ball\b|\blist\b|\bnames of all\b|\bwhich all\b)/i.test(userQuestion);
       const topK = asksBroadList ? 20 : 6;
       const data = await askQuestion(userQuestion, topK, selectedFile);
-      setChatHistory((prev) => [...prev, { role: "assistant", text: data.answer }]);
+      
+      // Store answer with citations
+      const assistantMessage = {
+        role: "assistant",
+        text: data.answer,
+        citations: data.citations || [],
+        confidence: data.confidence
+      };
+      
+      setChatHistory((prev) => [...prev, assistantMessage]);
       setRetrievedChunks(data.retrieved_chunks || []);
       toast.success("Answer ready!", { id: "query" });
     } catch (error) {
