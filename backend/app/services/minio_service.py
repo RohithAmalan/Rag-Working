@@ -29,6 +29,16 @@ class MinioService:
             self.enabled = False
             return
 
+        self._init_client()
+
+    def _init_client(self) -> bool:
+        """Initialize MinIO client and ensure bucket exists.
+
+        This supports lazy reconnection when MinIO starts after backend boot.
+        """
+        if not self.enabled:
+            return False
+
         try:
             from minio import Minio
 
@@ -44,14 +54,25 @@ class MinioService:
                 logger.info("Created MinIO bucket: %s", self.bucket)
 
             logger.info("MinIO storage is enabled (bucket=%s)", self.bucket)
+            return True
         except Exception as exc:
             logger.warning("MinIO initialization failed (%s). Falling back to local storage.", exc)
-            self.enabled = False
             self._client = None
+            return False
 
     def upload_file(self, local_path: Path, original_name: str) -> dict[str, str]:
         """Upload a local file to MinIO and return storage metadata."""
-        if not self.enabled or self._client is None:
+        if not self.enabled:
+            return {
+                "storage_backend": "local",
+                "storage_path": str(local_path),
+                "storage_bucket": "",
+                "storage_object": "",
+                "storage_url": "",
+            }
+
+        # If MinIO was unavailable during app startup, try to reconnect now.
+        if self._client is None and not self._init_client():
             return {
                 "storage_backend": "local",
                 "storage_path": str(local_path),
@@ -61,7 +82,17 @@ class MinioService:
             }
 
         object_name = f"{uuid4().hex}_{Path(original_name).name}"
-        self._client.fput_object(self.bucket, object_name, str(local_path))
+        try:
+            self._client.fput_object(self.bucket, object_name, str(local_path))
+        except Exception as exc:
+            logger.warning("MinIO upload failed (%s). Falling back to local storage metadata.", exc)
+            return {
+                "storage_backend": "local",
+                "storage_path": str(local_path),
+                "storage_bucket": "",
+                "storage_object": "",
+                "storage_url": "",
+            }
 
         return {
             "storage_backend": "minio",
@@ -70,3 +101,41 @@ class MinioService:
             "storage_object": object_name,
             "storage_url": f"{settings.minio_endpoint}/{self.bucket}/{object_name}",
         }
+
+    def delete_object(self, object_name: str) -> bool:
+        """Delete an object from MinIO bucket."""
+        if not self.enabled:
+            return False
+
+        if self._client is None and not self._init_client():
+            return False
+
+        try:
+            self._client.remove_object(self.bucket, object_name)
+            return True
+        except Exception as exc:
+            logger.warning("MinIO delete failed for %s (%s)", object_name, exc)
+            return False
+
+    def download_file(self, object_name: str, local_path: Path) -> bool:
+        """Download a file from MinIO to a local path.
+        
+        Args:
+            object_name: Name of the object in MinIO bucket
+            local_path: Local path where to save the file
+            
+        Returns:
+            True if download succeeded, False otherwise
+        """
+        if not self.enabled:
+            return False
+
+        if self._client is None and not self._init_client():
+            return False
+
+        try:
+            self._client.fget_object(self.bucket, object_name, str(local_path))
+            return True
+        except Exception as exc:
+            logger.warning("MinIO download failed for %s (%s)", object_name, exc)
+            return False

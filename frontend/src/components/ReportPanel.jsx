@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-export default function ReportPanel({ docs }) {
+export default function ReportPanel({ docs, onDeleteDocument, deletingDocumentId }) {
   const items = Array.isArray(docs?.documents) ? docs.documents : [];
   const [selectedKey, setSelectedKey] = useState("");
 
@@ -103,10 +103,17 @@ export default function ReportPanel({ docs }) {
           const isSelected = selectedDoc && selectedDoc.file_name === fileName && selectedDoc.source_type === sourceType;
 
           return (
-            <button
+            <div
               key={key}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setSelectedKey(key)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedKey(key);
+                }
+              }}
               className={`w-full rounded-2xl border p-3 text-left transition ${
                 isSelected
                   ? "border-sky/50 bg-white shadow-sm"
@@ -118,6 +125,22 @@ export default function ReportPanel({ docs }) {
                 <span className="text-xs uppercase tracking-wide text-ink/60">{sourceType}</span>
               </div>
 
+              <div className="mt-2 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (doc.document_id && onDeleteDocument) {
+                      onDeleteDocument(doc.document_id, fileName);
+                    }
+                  }}
+                  disabled={!doc.document_id || deletingDocumentId === fileName}
+                  className="rounded-lg border border-coral/40 bg-white px-2 py-1 text-xs font-semibold text-coral transition hover:bg-coral/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingDocumentId === fileName ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+
               <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-ink/80 sm:grid-cols-2">
                 <p>chunks: {doc.chunks || 0}</p>
                 <p>storage: {storage}</p>
@@ -126,7 +149,7 @@ export default function ReportPanel({ docs }) {
                 {report.row_count !== undefined && <p>rows: {report.row_count}</p>}
                 {report.column_count !== undefined && <p>columns: {report.column_count}</p>}
               </div>
-            </button>
+            </div>
           );
         })}
         </div>

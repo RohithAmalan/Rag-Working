@@ -22,6 +22,7 @@ def _extract_exact_terms(query_text: str) -> dict[str, list[str]]:
         "ids": [],
         "phones": [],
         "emails": [],
+        "full_names": [],
         "names": [],
         "file_hints": [],
     }
@@ -47,6 +48,14 @@ def _extract_exact_terms(query_text: str) -> dict[str, list[str]]:
     # Extract emails
     for token in re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", query_text):
         result["emails"].append(token.strip())
+
+    # Extract full names first (e.g., "Donna Harris") to avoid broad single-name mismatches.
+    for match in re.finditer(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b", query_text):
+        phrase = match.group(1).strip()
+        phrase_l = phrase.lower()
+        if any(noise in phrase_l for noise in ["file", "report", "sheet", "table", "orders", "order", "details"]):
+            continue
+        result["full_names"].append(phrase)
 
     # Extract names (capitalized words, length 2-20)
     for token in re.findall(r"\b[A-Z][a-z]+\b", query_text):
@@ -130,6 +139,93 @@ def _matches_file_hints(metadata: dict[str, Any], file_hints: list[str]) -> bool
     return False
 
 
+def _normalized_original_file_name(stored_file_name: str) -> str:
+    """Normalize stored file name by stripping UUID prefix if present."""
+    name = str(stored_file_name or "").strip()
+    # Stored names are typically: <uuid>_<original-name>
+    if "_" in name and len(name.split("_", 1)[0]) >= 16:
+        return name.split("_", 1)[1].lower()
+    return name.lower()
+
+
+def _matches_required_file(metadata: dict[str, Any], required_file_name: str | None) -> bool:
+    if not required_file_name:
+        return True
+    stored = str(metadata.get("file_name", ""))
+    normalized_required = required_file_name.lower().strip()
+    normalized_stored_original = _normalized_original_file_name(stored)
+    return normalized_required == normalized_stored_original
+
+
+def _extract_numeric_from_chunk(chunk_text: str, field_name: str) -> float | None:
+    pattern = rf"{re.escape(field_name)}\s+is\s+([-+]?\d*\.?\d+)"
+    match = re.search(pattern, chunk_text, re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _extract_numeric_facts(chunk_text: str) -> dict[str, float]:
+    """Extract numeric facts from patterns like '<Field> is <number>'."""
+    facts: dict[str, float] = {}
+    for raw_key, raw_value in re.findall(r"([A-Za-z][A-Za-z0-9_ /()\-]{1,50})\s+is\s+([-+]?\d*\.?\d+)", chunk_text):
+        key = re.sub(r"\s+", " ", raw_key).strip()
+        if not key:
+            continue
+        try:
+            facts[key] = float(raw_value)
+        except ValueError:
+            continue
+    return facts
+
+
+def _normalize_metric_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _choose_metric_key(query_text: str, numeric_facts: dict[str, float]) -> str | None:
+    if not numeric_facts:
+        return None
+
+    q_lower = query_text.lower()
+    q_tokens = {
+        token
+        for token in re.findall(r"[a-z]+", q_lower)
+        if token not in {"top", "highest", "lowest", "max", "min", "minimum", "list", "show", "get", "with", "their", "the"}
+    }
+
+    best_key: str | None = None
+    best_score = -1
+    for key in numeric_facts.keys():
+        key_tokens = set(re.findall(r"[a-z]+", key.lower()))
+        overlap_score = len(q_tokens & key_tokens)
+        if overlap_score > best_score:
+            best_score = overlap_score
+            best_key = key
+
+    if best_key and best_score > 0:
+        return best_key
+
+    # Fallbacks for common metric-oriented intents.
+    if "price" in q_lower:
+        for key in numeric_facts.keys():
+            if "price" in key.lower():
+                return key
+    if "sales" in q_lower:
+        for key in numeric_facts.keys():
+            if "sales" in key.lower():
+                return key
+    if "quantity" in q_lower:
+        for key in numeric_facts.keys():
+            if "quantity" in key.lower() or "qty" in key.lower():
+                return key
+
+    return best_key
+
+
 class MongoVectorService:
     """Service for vector storage and retrieval using MongoDB."""
 
@@ -199,6 +295,7 @@ class MongoVectorService:
         query_text: str,
         top_k: int = 5,
         source_priority: str | None = None,
+        required_file_name: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Intelligent hybrid search supporting:
@@ -215,12 +312,97 @@ class MongoVectorService:
         has_ids = bool(exact_terms["ids"])
         has_phones = bool(exact_terms["phones"])
         has_emails = bool(exact_terms["emails"])
+        has_full_names = bool(exact_terms["full_names"])
         has_names = bool(exact_terms["names"])
+        # If UI already selected a specific file, ignore file hints from question text
+        # to avoid conflicts from misspellings/variants in natural language.
+        if required_file_name:
+            exact_terms["file_hints"] = []
         file_hint_filter = _build_file_hint_filter(exact_terms["file_hints"])
+        required_file_filter = None
+        if required_file_name:
+            escaped = re.escape(required_file_name)
+            # Match exact original file name, optionally with UUID prefix.
+            required_file_filter = {
+                "metadata.file_name": {
+                    "$regex": rf"(?:^|^[0-9a-f]{{16,}}_){escaped}$",
+                    "$options": "i",
+                }
+            }
 
         exact_hits: list[dict[str, Any]] = []
 
         logger.debug(f"Query analysis: ids={len(exact_terms['ids'])}, phones={len(exact_terms['phones'])}, names={len(exact_terms['names'])}")
+
+        # ============ FAST PATH: numeric metric ranking in selected file ============
+        q_lower = query_text.lower()
+        asks_metric_rank = any(token in q_lower for token in ["price", "sales", "quantity", "amount", "cost", "revenue", "score", "value", "profit", "discount"]) and any(
+            token in q_lower for token in ["highest", "max", "top", "lowest", "minimum", "min"]
+        )
+        if required_file_name and asks_metric_rank:
+            top_match = re.search(r"\btop\s+(\d+)\b", q_lower)
+            n = int(top_match.group(1)) if top_match else top_k
+            n = max(1, min(n, 20))
+
+            rank_clauses: list[dict[str, Any]] = [required_file_filter] if required_file_filter else []
+            if source_priority:
+                rank_clauses.append({"metadata.source_priority": source_priority})
+
+            rank_filter = {"$and": rank_clauses} if len(rank_clauses) > 1 else (rank_clauses[0] if rank_clauses else {})
+            candidates = await self.db[settings.chunks_collection].find(rank_filter).limit(5000).to_list(length=5000)
+
+            key_votes: dict[str, int] = {}
+            cached_facts: list[tuple[dict[str, Any], dict[str, float]]] = []
+            for row in candidates:
+                facts = _extract_numeric_facts(str(row.get("chunk_text", "")))
+                if not facts:
+                    continue
+                cached_facts.append((row, facts))
+                chosen = _choose_metric_key(query_text, facts)
+                if chosen:
+                    norm = _normalize_metric_key(chosen)
+                    key_votes[norm] = key_votes.get(norm, 0) + 1
+
+            chosen_metric_norm = max(key_votes.items(), key=lambda kv: kv[1])[0] if key_votes else None
+            scored_rows: list[tuple[float, dict[str, Any]]] = []
+            for row, facts in cached_facts:
+                metric_value: float | None = None
+                if chosen_metric_norm:
+                    for key, value in facts.items():
+                        if _normalize_metric_key(key) == chosen_metric_norm:
+                            metric_value = value
+                            break
+                if metric_value is None:
+                    fallback_key = _choose_metric_key(query_text, facts)
+                    if fallback_key:
+                        metric_value = facts.get(fallback_key)
+                if metric_value is None:
+                    continue
+                scored_rows.append((metric_value, row))
+
+            if scored_rows:
+                wants_lowest = any(token in q_lower for token in ["lowest", "minimum", "min"])
+                scored_rows.sort(key=lambda item: item[0], reverse=not wants_lowest)
+                picked = [row for _, row in scored_rows[:n]]
+
+                return [
+                    {
+                        "chunk_text": match.get("chunk_text", ""),
+                        "source": match.get("source", "unknown"),
+                        "document_id": str(match.get("document_id", "")),
+                        "chunk_index": match.get("chunk_index", 0),
+                        "similarity_score": 0.99,
+                        "metadata": {
+                            **match.get("metadata", {}),
+                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
+                            "source_type": match.get("metadata", {}).get(
+                                "source_type",
+                                match.get("metadata", {}).get("file_type", "unknown"),
+                            ),
+                        },
+                    }
+                    for match in picked
+                ]
 
         # ============ STRATEGY 1: EMAILS (Most specific for person lookup) ============
         if has_emails:
@@ -231,6 +413,8 @@ class MongoVectorService:
                 ]
                 if file_hint_filter:
                     query_clauses.append(file_hint_filter)
+                if required_file_filter:
+                    query_clauses.append(required_file_filter)
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
@@ -257,7 +441,44 @@ class MongoVectorService:
                 if exact_hits:
                     break
 
-        # ============ STRATEGY 2: NAMES + PHONES (Most specific) ============
+        # ============ STRATEGY 2: FULL NAMES (high precision) ============
+        if has_full_names and not exact_hits:
+            logger.debug("Strategy 2: Exact full-name search")
+            for full_name in exact_terms["full_names"]:
+                query_clauses: list[dict[str, Any]] = [
+                    {"chunk_text": {"$regex": re.escape(full_name), "$options": "i"}},
+                ]
+                if file_hint_filter:
+                    query_clauses.append(file_hint_filter)
+                if required_file_filter:
+                    query_clauses.append(required_file_filter)
+                if source_priority:
+                    query_clauses.append({"metadata.source_priority": source_priority})
+
+                query_filter = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
+                matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+
+                for match in matches:
+                    exact_hits.append({
+                        "chunk_text": match.get("chunk_text", ""),
+                        "source": match.get("source", "unknown"),
+                        "document_id": str(match.get("document_id", "")),
+                        "chunk_index": match.get("chunk_index", 0),
+                        "similarity_score": 0.995,
+                        "metadata": {
+                            **match.get("metadata", {}),
+                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
+                            "source_type": match.get("metadata", {}).get(
+                                "source_type",
+                                match.get("metadata", {}).get("file_type", "unknown"),
+                            ),
+                        },
+                    })
+
+                if exact_hits:
+                    break
+
+        # ============ STRATEGY 3: NAMES + PHONES (Most specific) ============
         if has_names and has_phones:
             logger.debug(f"Strategy 2: Multi-term search (name+phone)")
             for name in exact_terms["names"]:
@@ -269,6 +490,8 @@ class MongoVectorService:
                     ]
                     if file_hint_filter:
                         query_clauses.append(file_hint_filter)
+                    if required_file_filter:
+                        query_clauses.append(required_file_filter)
                     if source_priority:
                         query_clauses.append({"metadata.source_priority": source_priority})
 
@@ -299,15 +522,17 @@ class MongoVectorService:
                 if exact_hits:
                     break
 
-        # ============ STRATEGY 3: NAMES ONLY ============
+        # ============ STRATEGY 4: NAMES ONLY ============
         if has_names and not exact_hits:
-            logger.debug(f"Strategy 3: Name search only")
+            logger.debug("Strategy 4: Name search only")
             for name in exact_terms["names"]:
                 query_clauses: list[dict[str, Any]] = [
                     {"chunk_text": {"$regex": f"(?i).*{re.escape(name)}.*"}},
                 ]
                 if file_hint_filter:
                     query_clauses.append(file_hint_filter)
+                if required_file_filter:
+                    query_clauses.append(required_file_filter)
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
@@ -336,15 +561,17 @@ class MongoVectorService:
                 if exact_hits:
                     break
 
-        # ============ STRATEGY 4: IDS ============
+        # ============ STRATEGY 5: IDS ============
         if has_ids and not exact_hits:
-            logger.debug(f"Strategy 4: ID search")
+            logger.debug("Strategy 5: ID search")
             for term_id in exact_terms["ids"]:
                 query_clauses: list[dict[str, Any]] = [
                     {"chunk_text": {"$regex": re.escape(term_id), "$options": "i"}},
                 ]
                 if file_hint_filter:
                     query_clauses.append(file_hint_filter)
+                if required_file_filter:
+                    query_clauses.append(required_file_filter)
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
@@ -373,9 +600,9 @@ class MongoVectorService:
                 if exact_hits:
                     break
 
-        # ============ STRATEGY 5: PHONES (Most lenient) ============
+        # ============ STRATEGY 6: PHONES (Most lenient) ============
         if has_phones and not exact_hits:
-            logger.debug(f"Strategy 5: Phone search with tolerance")
+            logger.debug("Strategy 6: Phone search with tolerance")
             for phone in exact_terms["phones"]:
                 # Try exact match first
                 query_clauses: list[dict[str, Any]] = [
@@ -383,6 +610,8 @@ class MongoVectorService:
                 ]
                 if file_hint_filter:
                     query_clauses.append(file_hint_filter)
+                if required_file_filter:
+                    query_clauses.append(required_file_filter)
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
@@ -418,6 +647,8 @@ class MongoVectorService:
                         ]
                         if file_hint_filter:
                             tolerant_clauses.append(file_hint_filter)
+                        if required_file_filter:
+                            tolerant_clauses.append(required_file_filter)
                         if source_priority:
                             tolerant_clauses.append({"metadata.source_priority": source_priority})
 
@@ -470,6 +701,13 @@ class MongoVectorService:
             source_priority=source_priority,
         )
 
+        if required_file_name:
+            results = [
+                result
+                for result in results
+                if _matches_required_file(result.get("metadata", {}), required_file_name)
+            ]
+
         # Handle file hint filtering with fallback if no matches
         if exact_terms["file_hints"]:
             file_filtered_results = [
@@ -479,7 +717,7 @@ class MongoVectorService:
             
             # If semantic search found results but file hints filtered them all out,
             # it means user mentioned a file that doesn't exist - ask them which one they meant
-            if results and not file_filtered_results:
+            if results and not file_filtered_results and not required_file_name:
                 logger.warning(f"File hints {exact_terms['file_hints']} didn't match any results. Fetching available files.")
                 available_files = await self.db[settings.chunks_collection].distinct("metadata.file_name")
                 available_files = [f for f in available_files if f and f != "unknown"]
@@ -515,7 +753,15 @@ class MongoVectorService:
                 },
             }
             for result in results[:top_k]
+            if _matches_required_file(result.get("metadata", {}), required_file_name)
         ]
+
+    async def delete_document_and_chunks(self, document_id: str) -> int:
+        """Delete a document and all linked chunks."""
+        obj_id = ObjectId(document_id)
+        deleted_chunks = await self.chunks.delete_chunks_by_document(obj_id)
+        await self.documents.delete_document(obj_id)
+        return deleted_chunks
 
     async def get_document_by_id(self, document_id: str) -> dict[str, Any] | None:
         """Get document metadata by ID."""
@@ -545,6 +791,26 @@ class MongoVectorService:
             ]
         except Exception as e:
             logger.error(f"Error retrieving documents: {e}")
+            return []
+
+    async def get_documents_by_filename(self, filename: str) -> list[dict[str, Any]]:
+        """Get all stored documents by original filename."""
+        try:
+            cursor = self.documents.collection.find({"filename": filename})
+            docs = await cursor.to_list(length=None)
+            return [
+                {
+                    "_id": str(doc.get("_id", "")),
+                    "filename": doc.get("filename", ""),
+                    "file_type": doc.get("file_type", "unknown"),
+                    "path": doc.get("path", ""),
+                    "metadata": doc.get("metadata", {}),
+                    "uploaded_at": doc.get("uploaded_at"),
+                }
+                for doc in docs
+            ]
+        except Exception as e:
+            logger.error(f"Error retrieving documents by filename: {e}")
             return []
 
     async def get_vector_store_stats(self) -> dict[str, Any]:

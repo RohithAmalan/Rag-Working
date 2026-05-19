@@ -11,6 +11,7 @@ class HealthResponse(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, description="Natural language question")
     top_k: int = Field(default=6, ge=1, le=20)
+    selected_file: str | None = Field(default=None, description="Optional file name to scope retrieval")
 
 
 class SourceItem(BaseModel):

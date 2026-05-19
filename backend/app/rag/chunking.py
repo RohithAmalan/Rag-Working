@@ -41,7 +41,7 @@ def dataframe_to_documents(df, file_name: str, source_type: str, sheet_name: str
 
     docs: list[dict[str, Any]] = []
     # Drop columns that are purely unnamed index artifacts (Unnamed: 0, Unnamed: 1, …)
-    real_cols = [col for col in df.columns if not _re.fullmatch(r"Unnamed:\s*\d+", str(col).strip())]
+    real_cols = [col for col in df.columns if not _re.match(r"^Unnamed:.*$", str(col).strip(), _re.IGNORECASE)]
     if real_cols:
         df = df[real_cols]
     # Drop rows where every cell is NaN/empty

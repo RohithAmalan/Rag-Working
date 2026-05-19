@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     )
     embedding_dimension: int = Field(default=384, validation_alias="EMBEDDING_DIMENSION")
 
+    # LangGraph Workflow Configuration
+    langgraph_workflow_mode: str = Field(
+        default="multi_agent",  # Options: "basic", "advanced", "multi_agent"
+        validation_alias="LANGGRAPH_WORKFLOW_MODE",
+    )
+
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
         env_file_encoding="utf-8",

@@ -11,6 +11,15 @@ pymongo
 langchain
 langchain-community
 langchain-openai
+langgraph
+langgraph-checkpoint
 sentence-transformers
 python-dotenv
 minio
+
+# Testing dependencies
+pytest
+pytest-asyncio
+pytest-cov
+httpx  # for testing FastAPI
+pytest-mock

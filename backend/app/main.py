@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
 from app.routes.rag_routes import router as rag_router
 from app.routes.system_routes import router as system_router
+from app.routes.auth_routes import router as auth_router
 from app.services.faiss_rag_service import FaissRagService
 from app.services.rag_service import RagService
 from app.utils.config import settings
@@ -28,6 +29,7 @@ app.add_middleware(
 
 app.include_router(system_router)
 app.include_router(rag_router)
+app.include_router(auth_router)
 
 
 @app.on_event("startup")

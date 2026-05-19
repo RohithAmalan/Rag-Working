@@ -13,6 +13,7 @@ from app.rag.chunking import chunk_pdf_texts, dataframe_to_documents
 from app.services.file_service import FileService
 from app.services.minio_service import MinioService
 from app.services.mongo_vector_service import MongoVectorService
+from app.services.langgraph_rag_service import LangGraphRAGService
 from app.utils.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,20 @@ class RagService:
         )
         self.minio_service = MinioService()
         self.vector_service = MongoVectorService(db)
+        
+        # Initialize LangGraph RAG service with configured workflow mode
+        workflow_mode = settings.langgraph_workflow_mode
+        if workflow_mode not in ["basic", "advanced", "multi_agent"]:
+            logger.warning(
+                f"Invalid workflow mode '{workflow_mode}', defaulting to 'multi_agent'"
+            )
+            workflow_mode = "multi_agent"
+        
+        self.langgraph_service = LangGraphRAGService(
+            self.vector_service,
+            workflow_mode=workflow_mode,
+        )
+        logger.info(f"RagService initialized with LangGraph workflow mode: {workflow_mode}")
 
     async def upload_and_process_files(
         self,
@@ -127,6 +142,7 @@ class RagService:
         self,
         query: str,
         top_k: int = 5,
+        file_name: str | None = None,
     ) -> list[dict[str, Any]]:
         """Search for relevant chunks using vector similarity.
 
@@ -145,6 +161,7 @@ class RagService:
                 query_text=query,
                 top_k=top_k,
                 source_priority="primary",
+                required_file_name=file_name,
             )
 
             # If we already have a strong exact/structured primary match,
@@ -160,6 +177,7 @@ class RagService:
                     query_text=query,
                     top_k=top_k - len(results),
                     source_priority="secondary",
+                    required_file_name=file_name,
                 )
                 results.extend(secondary_results)
 
@@ -180,6 +198,101 @@ class RagService:
         except Exception as e:
             logger.error(f"Error retrieving chunks: {e}")
             return []
+
+    async def query_with_langgraph(
+        self,
+        query: str,
+        top_k: int = 15,
+        file_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Query using LangGraph orchestrated workflow (Phase 1).
+        
+        This method uses the LangGraph state machine to orchestrate:
+        1. Query analysis (intent detection, entity extraction)
+        2. Hybrid retrieval (exact match + vector search + ranking)
+        3. Answer generation with citations
+        
+        Args:
+            query: User question
+            top_k: Number of chunks to retrieve
+            file_name: Optional file name to scope search
+            
+        Returns:
+            dict with answer, chunks, citations, confidence, and metadata
+        """
+        logger.info(f"LangGraph query: {query[:100]}... (file={file_name}, top_k={top_k})")
+        
+        try:
+            result = await self.langgraph_service.query(
+                question=query,
+                selected_file=file_name,
+                top_k=top_k,
+            )
+            
+            logger.info(
+                f"LangGraph result: confidence={result.get('confidence', 0):.2f}, "
+                f"chunks={len(result.get('retrieved_chunks', []))}"
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"LangGraph query failed: {e}", exc_info=True)
+            return {
+                "answer": "I encountered an error processing your query.",
+                "retrieved_chunks": [],
+                "citations": [],
+                "confidence": 0.0,
+                "metadata": {
+                    "error": str(e),
+                },
+            }
+
+    async def delete_document(self, document_id: str) -> dict[str, Any]:
+        """Delete document metadata, chunks, and MinIO object when available."""
+        doc = await self.vector_service.get_document_by_id(document_id)
+        if not doc:
+            raise ValueError("Document not found")
+
+        storage_object = str(doc.get("metadata", {}).get("storage_object", "")).strip()
+        deleted_from_minio = False
+        if storage_object:
+            deleted_from_minio = self.minio_service.delete_object(storage_object)
+
+        deleted_chunks = await self.vector_service.delete_document_and_chunks(document_id)
+
+        return {
+            "document_id": document_id,
+            "file_name": doc.get("filename", "unknown"),
+            "deleted_chunks": deleted_chunks,
+            "deleted_from_minio": deleted_from_minio,
+        }
+
+    async def delete_documents_by_filename(self, file_name: str) -> dict[str, Any]:
+        """Delete all versions of a file by filename from MongoDB and MinIO."""
+        docs = await self.vector_service.get_documents_by_filename(file_name)
+        if not docs:
+            raise ValueError("Document not found")
+
+        total_chunks = 0
+        deleted_from_minio = 0
+        deleted_docs = 0
+
+        for doc in docs:
+            storage_object = str(doc.get("metadata", {}).get("storage_object", "")).strip()
+            if storage_object and self.minio_service.delete_object(storage_object):
+                deleted_from_minio += 1
+
+            deleted_chunks = await self.vector_service.delete_document_and_chunks(doc.get("_id", ""))
+            total_chunks += deleted_chunks
+            deleted_docs += 1
+
+        return {
+            "file_name": file_name,
+            "deleted_documents": deleted_docs,
+            "deleted_chunks": total_chunks,
+            "deleted_from_minio": deleted_from_minio,
+        }
 
     async def get_all_documents(self) -> list[dict[str, Any]]:
         """Get all stored documents.
