@@ -11,6 +11,7 @@ from app.services.mongo_vector_service import MongoVectorService
 from app.rag.generator import generate_answer
 from app.rag.reranker import get_reranker_service
 from app.rag.citation_generator import get_citation_generator
+from app.rag.query_expansion import get_query_expander
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +73,16 @@ async def analyze_query_node(state: AgentState) -> dict[str, Any]:
 async def retrieve_node(
     state: AgentState,
     mongo_service: MongoVectorService,
+    use_query_expansion: bool = True,
 ) -> dict[str, Any]:
-    """Node 2: Retrieve chunks from MongoDB using hybrid search with reranking.
+    """Node 2: Retrieve chunks using query expansion + hybrid search + reranking.
     
     Steps:
-    1. Retrieve top-k*3 candidates using hybrid search
-    2. Rerank using cross-encoder
-    3. Return top-k best chunks
+    1. [Optional] Expand query into multiple variations
+    2. Retrieve candidates using hybrid search (per variation if expanded)
+    3. Merge and deduplicate results
+    4. Rerank using cross-encoder
+    5. Return top-k best chunks
     """
     question = state["question"]
     selected_file = state.get("selected_file")
@@ -88,18 +92,36 @@ async def retrieve_node(
     workflow_path.append("retrieve")
     
     try:
-        # Retrieve more candidates for reranking (3x top_k)
-        candidate_count = min(top_k * 3, 50)  # Max 50 candidates
+        # Step 1: Query Expansion (if enabled)
+        queries = [question]
+        if use_query_expansion:
+            expander = get_query_expander()
+            queries = [question] + expander.expand_query(question, num_variations=2)
+            logger.info(f"Expanded to {len(queries)} query variations")
         
-        logger.info(f"Retrieving {candidate_count} candidates for reranking")
+        # Step 2: Retrieve candidates for each query variation
+        all_chunks = []
+        seen_ids = set()
+        candidate_count_per_query = min((top_k * 3) // max(len(queries), 1), 30)
         
-        # Use existing hybrid search
-        chunks = await mongo_service.search_chunks(
-            query_text=question,
-            top_k=candidate_count,
-            required_file_name=selected_file,
-            source_priority="primary",
-        )
+        for query in queries:
+            logger.info(f"Retrieving {candidate_count_per_query} candidates for: {query[:50]}...")
+            
+            chunks = await mongo_service.search_chunks(
+                query_text=query,
+                top_k=candidate_count_per_query,
+                required_file_name=selected_file,
+                source_priority="primary",
+            )
+            
+            # Deduplicate by chunk ID
+            for chunk in chunks:
+                chunk_id = chunk.get('_id', chunk.get('chunk_index', ''))
+                if chunk_id and chunk_id not in seen_ids:
+                    seen_ids.add(chunk_id)
+                    all_chunks.append(chunk)
+        
+        logger.info(f"Retrieved {len(all_chunks)} unique chunks from {len(queries)} queries")
         
         # Rerank chunks using cross-encoder
         reranker = get_reranker_service()
