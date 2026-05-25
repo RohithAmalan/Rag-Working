@@ -8,10 +8,11 @@ from app.rag.generator import generate_answer
 from app.services.rag_service import RagService
 from app.utils.config import settings
 from app.utils.logger import get_logger
+from app.utils.dependencies import require_admin, require_user, get_current_user
 
 logger = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["rag"])
 
 
 def get_rag_service() -> RagService:
@@ -28,20 +29,55 @@ def get_rag_service() -> RagService:
     return app.state.rag_service
 
 
-@router.post("/upload", response_model=dict[str, Any])
+@router.post(
+    "/upload",
+    response_model=dict[str, Any],
+    summary="Upload and index documents",
+    description="""
+    Upload CSV, Excel (XLSX), or PDF files for semantic search.
+    
+    - **CSV/Excel**: Converted to semantic text chunks (primary data source)
+    - **PDF**: Extracted and chunked (secondary context source)
+    
+    Files are processed, embedded, and stored in MongoDB vector database.
+    """,
+    responses={
+        200: {
+            "description": "Files uploaded and indexed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Files uploaded and indexed successfully",
+                        "processed_files": 2,
+                        "total_chunks": 45,
+                        "documents": [
+                            {"filename": "sales.csv", "chunks_stored": 30},
+                            {"filename": "report.pdf", "chunks_stored": 15}
+                        ],
+                        "errors": []
+                    }
+                }
+            }
+        }
+    }
+)
 async def upload_documents(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(..., description="Files to upload (CSV, XLSX, PDF)"),
     rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_admin),  # Admin only
 ):
-    """Upload and process files (PDF, CSV, XLSX).
+    """Upload and process files (PDF, CSV, XLSX). **Admin only.**
 
     Args:
         files: List of files to upload
         rag_service: RAG service instance
+        current_user: Current authenticated admin user
 
     Returns:
         Upload processing statistics
     """
+    logger.info(f"Admin {current_user.get('username')} uploading {len(files)} file(s)")
+    
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
@@ -66,20 +102,62 @@ async def upload_documents(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(exc)}") from exc
 
 
-@router.post("/query", response_model=dict[str, Any])
+@router.post(
+    "/query",
+    response_model=dict[str, Any],
+    summary="Query documents with RAG",
+    description="""
+    Ask questions about uploaded documents using advanced RAG pipeline:
+    
+    - **LangGraph** multi-agent workflow (Phase 3)
+    - **Query Expansion** (3 variations for better coverage)
+    - **Hybrid Search** (vector + text search)
+    - **Cross-Encoder Reranking** (20-30% accuracy boost)
+    - **Citation Generation** (inline [1], [2] source attribution)
+    
+    Supports: exact lookups, rankings, aggregations, multi-file queries.
+    """,
+    responses={
+        200: {
+            "description": "Query processed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "answer": "Based on the data, Employee John achieved sales of $45,000 in March. [1]",
+                        "retrieved_chunks": [
+                            {
+                                "text": "Employee John achieved sales of 45000 in March.",
+                                "filename": "sales.csv",
+                                "similarity_score": 0.92
+                            }
+                        ],
+                        "citations": [
+                            {"index": 1, "source": "sales.csv", "text": "Employee John..."}
+                        ],
+                        "confidence": 0.92
+                    }
+                }
+            }
+        }
+    }
+)
 async def query_documents(
     payload: QueryRequest,
     rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_user),  # Authenticated users only
 ):
-    """Query uploaded documents with semantic search and LLM response.
+    """Query uploaded documents with semantic search and LLM response. **Requires authentication.**
 
     Args:
         payload: Query request with question and top_k
         rag_service: RAG service instance
+        current_user: Current authenticated user
 
     Returns:
         Query response with answer and retrieved chunks
     """
+    logger.info(f"User {current_user.get('username')} querying: {payload.question[:50]}...")
+    
     try:
         logger.info(f"Processing query: {payload.question[:50]}...")
         
@@ -242,11 +320,15 @@ async def query_with_langgraph(
 
 
 @router.get("/documents", response_model=dict[str, Any])
-async def list_documents(rag_service: RagService = Depends(get_rag_service)):
-    """List all uploaded documents and vector store statistics.
+async def list_documents(
+    rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_user),  # Authenticated users only
+):
+    """List all uploaded documents and vector store statistics. **Requires authentication.**
 
     Args:
         rag_service: RAG service instance
+        current_user: Current authenticated user
 
     Returns:
         Documents and statistics
@@ -279,8 +361,13 @@ async def list_documents(rag_service: RagService = Depends(get_rag_service)):
 
 
 @router.delete("/documents/{document_id}", response_model=dict[str, Any])
-async def delete_document(document_id: str, rag_service: RagService = Depends(get_rag_service)):
-    """Delete one uploaded document from MongoDB and MinIO."""
+async def delete_document(
+    document_id: str,
+    rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_admin),  # Admin only
+):
+    """Delete one uploaded document from MongoDB and MinIO. **Admin only.**"""
+    logger.info(f"Admin {current_user.get('username')} deleting document {document_id}")
     try:
         result = await rag_service.delete_document(document_id)
         return {
@@ -295,8 +382,13 @@ async def delete_document(document_id: str, rag_service: RagService = Depends(ge
 
 
 @router.delete("/documents/by-name/{file_name}", response_model=dict[str, Any])
-async def delete_document_by_name(file_name: str, rag_service: RagService = Depends(get_rag_service)):
-    """Delete all uploaded versions of a file by original filename."""
+async def delete_document_by_name(
+    file_name: str,
+    rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_admin),  # Admin only
+):
+    """Delete all uploaded versions of a file by original filename. **Admin only.**"""
+    logger.info(f"Admin {current_user.get('username')} deleting documents by name: {file_name}")
     try:
         decoded_name = unquote(file_name)
         result = await rag_service.delete_documents_by_filename(decoded_name)
@@ -356,7 +448,7 @@ async def get_file_preview(
         
         try:
             if storage_backend == "minio":
-                # Download from MinIO to temporary file
+                # First check if file exists in mounted minio-data directory
                 storage_object = doc.get("metadata", {}).get("storage_object")
                 if not storage_object:
                     # Try to parse from storage_path (which is stored as 'path' field)
@@ -369,18 +461,25 @@ async def get_file_preview(
                 if not storage_object:
                     raise HTTPException(status_code=404, detail="MinIO object name not found in metadata")
                 
-                # Create temp file with same extension
-                suffix = Path(decoded_name).suffix
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-                temp_path = Path(temp_file.name)
-                temp_file.close()
-                
-                # Download file from MinIO
-                success = rag_service.minio_service.download_file(storage_object, temp_path)
-                if not success:
-                    raise HTTPException(status_code=500, detail="Failed to download file from MinIO")
-                
-                file_path_obj = temp_path
+                # Check mounted minio-data directory first (for backward compatibility)
+                minio_data_path = Path("/app/minio-data") / storage_object
+                if minio_data_path.exists():
+                    logger.info(f"Using file from mounted minio-data: {minio_data_path}")
+                    file_path_obj = minio_data_path
+                else:
+                    # Fall back to downloading from MinIO if service is enabled
+                    # Create temp file with same extension
+                    suffix = Path(decoded_name).suffix
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    temp_path = Path(temp_file.name)
+                    temp_file.close()
+                    
+                    # Download file from MinIO
+                    success = rag_service.minio_service.download_file(storage_object, temp_path)
+                    if not success:
+                        raise HTTPException(status_code=500, detail="Failed to download file from MinIO")
+                    
+                    file_path_obj = temp_path
             else:
                 # Local storage
                 file_path = doc.get("path") or doc.get("storage_path")
@@ -457,7 +556,7 @@ async def get_file_analytics(
         
         try:
             if storage_backend == "minio":
-                # Download from MinIO to temporary file
+                # First check if file exists in mounted minio-data directory
                 storage_object = doc.get("metadata", {}).get("storage_object")
                 if not storage_object:
                     # Try to parse from storage_path (which is stored as 'path' field)
@@ -470,18 +569,25 @@ async def get_file_analytics(
                 if not storage_object:
                     raise HTTPException(status_code=404, detail="MinIO object name not found in metadata")
                 
-                # Create temp file with same extension
-                suffix = Path(decoded_name).suffix
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-                temp_path = Path(temp_file.name)
-                temp_file.close()
-                
-                # Download file from MinIO
-                success = rag_service.minio_service.download_file(storage_object, temp_path)
-                if not success:
-                    raise HTTPException(status_code=500, detail="Failed to download file from MinIO")
-                
-                file_path_obj = temp_path
+                # Check mounted minio-data directory first (for backward compatibility)
+                minio_data_path = Path("/app/minio-data") / storage_object
+                if minio_data_path.exists():
+                    logger.info(f"Using file from mounted minio-data: {minio_data_path}")
+                    file_path_obj = minio_data_path
+                else:
+                    # Fall back to downloading from MinIO if service is enabled
+                    # Create temp file with same extension
+                    suffix = Path(decoded_name).suffix
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    temp_path = Path(temp_file.name)
+                    temp_file.close()
+                    
+                    # Download file from MinIO
+                    success = rag_service.minio_service.download_file(storage_object, temp_path)
+                    if not success:
+                        raise HTTPException(status_code=500, detail="Failed to download file from MinIO")
+                    
+                    file_path_obj = temp_path
             else:
                 # Local storage
                 file_path = doc.get("path") or doc.get("storage_path")

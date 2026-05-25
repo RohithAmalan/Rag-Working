@@ -1,6 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import keycloak from "../keycloak";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -8,9 +9,10 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // --- Form-based login (calls backend /auth/login, which proxies to Keycloak ROPC) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!username || !password) {
       toast.error("Please enter username and password");
       return;
@@ -22,9 +24,7 @@ export default function Login({ onLogin }) {
       const apiUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
       const response = await fetch(`${apiUrl}/auth/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
@@ -34,23 +34,44 @@ export default function Login({ onLogin }) {
         throw new Error(data.detail || "Login failed");
       }
 
-      // Store token in localStorage
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("username", data.username);
-
-      toast.success(data.message || "Login successful!");
-      
-      // Call parent callback
-      if (onLogin) {
-        onLogin(data);
+      // Store user roles for RBAC
+      if (data.roles) {
+        localStorage.setItem("user_roles", JSON.stringify(data.roles));
+      }
+      // Keep refresh_token for future token rotation
+      if (data.refresh_token) {
+        localStorage.setItem("refresh_token", data.refresh_token);
       }
 
-      // Navigate to dashboard
+      toast.success(data.message || "Login successful!");
+      if (onLogin) onLogin(data);
       navigate("/");
     } catch (error) {
       toast.error(error.message || "Login failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // --- Keycloak SSO redirect (Authorization Code + PKCE) ---
+  const handleSSOLogin = async () => {
+    try {
+      // In case startup silent init failed, initialize on-demand before redirect.
+      if (!keycloak.didInitialize) {
+        await keycloak.init({
+          onLoad: "check-sso",
+          pkceMethod: "S256",
+          checkLoginIframe: false,
+          silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+        });
+      }
+
+      await keycloak.login({ redirectUri: `${window.location.origin}/login` });
+    } catch (error) {
+      console.error("Keycloak SSO login failed", error);
+      toast.error("Could not start Keycloak login. Please try again.");
     }
   };
 
@@ -63,6 +84,28 @@ export default function Login({ onLogin }) {
             <p className="mt-2 text-sm text-ink/70">Sign in to continue</p>
           </div>
 
+          {/* SSO Button */}
+          <button
+            type="button"
+            onClick={handleSSOLogin}
+            className="mb-6 flex w-full items-center justify-center gap-3 rounded-xl border-2 border-blue-600 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1zm0 2c4.971 0 9 4.029 9 9s-4.029 9-9 9-9-4.029-9-9 4.029-9 9-9zm0 4a5 5 0 100 10A5 5 0 0012 7zm0 2a3 3 0 110 6 3 3 0 010-6z"/>
+            </svg>
+            Sign in with Keycloak SSO
+          </button>
+
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-ink/10" />
+            </div>
+            <div className="relative flex justify-center text-xs text-ink/40">
+              <span className="bg-white px-3">or sign in with credentials</span>
+            </div>
+          </div>
+
+          {/* Username / Password form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-ink/80">Username</label>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -8,9 +8,10 @@ import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import Login from "./pages/Login";
 import { askQuestion, deleteDocumentsByName, fetchDocuments, fetchStorageStatus, uploadFiles } from "./services/api";
 
-export default function App() {
+export default function App({ keycloak }) {
   const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, false = not logged in, true = logged in
   const [username, setUsername] = useState("");
+  const [userRoles, setUserRoles] = useState([]); // Store user roles for RBAC
   const navigate = useNavigate();
   
   const [files, setFiles] = useState([]);
@@ -18,7 +19,6 @@ export default function App() {
   const [uploadResult, setUploadResult] = useState(null);
   const [uploadError, setUploadError] = useState("");
 
-  const [question, setQuestion] = useState("");
   const [askLoading, setAskLoading] = useState(false);
   const [askError, setAskError] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
@@ -38,23 +38,23 @@ export default function App() {
     minio: { enabled: false, connected: false, endpoint: "", bucket: "" },
   });
 
-  const normalizeDocuments = (data) => ({
+  const normalizeDocuments = useCallback((data) => ({
     total_chunks: data?.total_chunks ?? data?.stats?.total_chunks ?? 0,
     primary_chunks: data?.primary_chunks ?? data?.stats?.primary_chunks ?? 0,
     secondary_chunks: data?.secondary_chunks ?? data?.stats?.secondary_chunks ?? 0,
     documents: Array.isArray(data?.documents) ? data.documents : [],
-  });
+  }), []);
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       const data = await fetchDocuments();
       setDocuments(normalizeDocuments(data));
     } catch {
       setDocuments((prev) => prev);
     }
-  };
+  }, [normalizeDocuments]);
 
-  const loadStorageStatus = async () => {
+  const loadStorageStatus = useCallback(async () => {
     try {
       const data = await fetchStorageStatus();
       setStorageStatus({
@@ -70,16 +70,23 @@ export default function App() {
     } catch {
       setStorageStatus((prev) => prev);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Check if user is already logged in
     const token = localStorage.getItem("access_token");
     const storedUsername = localStorage.getItem("username");
+    const storedRoles = localStorage.getItem("user_roles");
     
     if (token && storedUsername) {
       setIsAuthenticated(true);
       setUsername(storedUsername);
+      // Load stored roles
+      try {
+        setUserRoles(storedRoles ? JSON.parse(storedRoles) : []);
+      } catch {
+        setUserRoles([]);
+      }
     } else {
       setIsAuthenticated(false);
     }
@@ -91,14 +98,12 @@ export default function App() {
     loadDocuments();
     loadStorageStatus();
 
-    // Keep dashboard stats/files fresh even if backend starts after frontend.
-    const intervalId = setInterval(() => {
-      loadDocuments();
-      loadStorageStatus();
-    }, 10000);
-
-    return () => clearInterval(intervalId);
-  }, []);
+    // Auto-refresh disabled - user can manually refresh using the button
+    // Prevents annoying page refreshes while working
+    
+    // Cleanup function (no interval to clear)
+    return () => {};
+  }, [isAuthenticated, loadDocuments, loadStorageStatus]);
 
   const handleUpload = async () => {
     if (!files.length) return;
@@ -132,11 +137,10 @@ export default function App() {
     }
   };
 
-  const handleAsk = async () => {
+  const handleAsk = useCallback(async (question) => {
     if (!question.trim()) return;
 
     const userQuestion = question.trim();
-    setQuestion("");
     setAskError("");
     setAskLoading(true);
     setChatHistory((prev) => [...prev, { role: "user", text: userQuestion }]);
@@ -166,7 +170,7 @@ export default function App() {
     } finally {
       setAskLoading(false);
     }
-  };
+  }, [selectedFile]);
 
   const handleDeleteDocument = async (_documentId, fileName) => {
     if (!fileName) return;
@@ -197,11 +201,15 @@ export default function App() {
   const handleLogin = (data) => {
     setIsAuthenticated(true);
     setUsername(data.username);
+    // Extract and store roles
+    const roles = data.roles || [];
+    setUserRoles(roles);
   };
 
   const handleLogout = async () => {
     const token = localStorage.getItem("access_token");
-    
+    const refreshToken = localStorage.getItem("refresh_token");
+
     if (token) {
       try {
         const apiUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -209,21 +217,32 @@ export default function App() {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
           },
+          body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined,
         });
       } catch (error) {
         console.error("Logout error:", error);
       }
     }
-    
+
     // Clear local storage
     localStorage.removeItem("access_token");
     localStorage.removeItem("username");
-    
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user_roles"); // Clear roles
+
     // Reset state
     setIsAuthenticated(false);
     setUsername("");
-    
+    setUserRoles([]); // Clear roles from state
+
+    // If Keycloak session exists, also log out from Keycloak (clears SSO session)
+    if (keycloak?.authenticated) {
+      keycloak.logout({ redirectUri: window.location.origin + "/login" });
+      return;
+    }
+
     toast.success("Logged out successfully");
     navigate("/login");
   };
@@ -243,7 +262,10 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/login" element={<Login onLogin={handleLogin} />} />
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />}
+      />
       <Route
         path="/"
         element={
@@ -256,8 +278,6 @@ export default function App() {
               uploadResult={uploadResult}
               uploadError={uploadError}
               storageStatus={storageStatus}
-              question={question}
-              setQuestion={setQuestion}
               onAsk={handleAsk}
               askLoading={askLoading}
               askError={askError}
@@ -270,6 +290,7 @@ export default function App() {
               onDeleteDocument={handleDeleteDocument}
               username={username}
               onLogout={handleLogout}
+              isAdmin={userRoles.includes('admin')} // RBAC: Check admin role
             />
           </ProtectedRoute>
         }
@@ -283,6 +304,7 @@ export default function App() {
               onRefresh={loadDocuments}
               username={username}
               onLogout={handleLogout}
+              isAdmin={userRoles.includes('admin')} // RBAC: Check admin role
             />
           </ProtectedRoute>
         }
@@ -296,6 +318,7 @@ export default function App() {
               onRefresh={loadDocuments}
               username={username}
               onLogout={handleLogout}
+              isAdmin={userRoles.includes('admin')} // RBAC: Check admin role
             />
           </ProtectedRoute>
         }
