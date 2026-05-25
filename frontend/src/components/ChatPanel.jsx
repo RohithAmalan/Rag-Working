@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import toast from "react-hot-toast";
+import { dedupeByFileName, getFilteredRagDocuments } from "../utils/ragDocuments";
 
-export default function ChatPanel({
+const ChatPanel = memo(function ChatPanel({
   chatHistory,
-  question,
-  setQuestion,
   onAsk,
   loading,
   error,
@@ -12,8 +11,11 @@ export default function ChatPanel({
   selectedFile,
   setSelectedFile,
 }) {
-  const docItems = Array.isArray(documents?.documents) ? documents.documents : [];
+  const docItems = dedupeByFileName(
+    getFilteredRagDocuments(Array.isArray(documents?.documents) ? documents.documents : [])
+  );
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const [question, setQuestion] = useState("");
 
   const handleCopy = (text, index) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -23,6 +25,13 @@ export default function ChatPanel({
     }).catch(() => {
       toast.error("Failed to copy");
     });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!question.trim() || loading) return;
+    onAsk(question);
+    setQuestion("");
   };
 
   return (
@@ -137,16 +146,21 @@ export default function ChatPanel({
         )}
       </div>
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row">
         <textarea
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit(e);
+            }
+          }}
           placeholder="What was the highest sales month?"
           className="h-24 w-full rounded-xl border border-ink/15 bg-white p-3 text-sm text-ink outline-none focus:border-ink/40"
         />
         <button
-          type="button"
-          onClick={onAsk}
+          type="submit"
           disabled={loading || !question.trim()}
           className="flex items-center justify-center gap-2 rounded-xl bg-coral px-5 py-3 text-sm font-bold text-white shadow-lg transition-all hover:bg-coral/90 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none"
         >
@@ -164,9 +178,11 @@ export default function ChatPanel({
             </>
           )}
         </button>
-      </div>
+      </form>
 
       {error && <p className="mt-3 text-sm text-coral">{error}</p>}
     </section>
   );
-}
+});
+
+export default ChatPanel;

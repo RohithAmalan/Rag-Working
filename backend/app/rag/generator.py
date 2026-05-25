@@ -363,10 +363,6 @@ def _structured_lookup_answer(question: str, context: str, source_types: set[str
     if ("unit price" in q_lower or "price" in q_lower) and any(token in q_lower for token in ["highest", "max", "top", "lowest", "minimum", "min"]):
         return None
 
-    fields = _parse_structured_row(context)
-    if not fields:
-        return None
-
     skip_fields = {
         "lookup keywords",
         "id lookup",
@@ -374,6 +370,30 @@ def _structured_lookup_answer(question: str, context: str, source_types: set[str
         "record details",
         "data row from",
     }
+
+    q_tokens = _question_tokens(question)
+    id_candidates = _extract_identifier_candidates(question)
+    asks_all = any(token in question.lower() for token in ["detail", "details", "all", "everything", "full", "extract"])
+
+    # Parse ALL rows and find the specific matching row (not just the first)
+    all_rows = _parse_structured_rows(context)
+    if not all_rows:
+        return None
+
+    if id_candidates:
+        # Search every row for the requested ID — return the first match
+        matching_row: dict[str, str] | None = None
+        for row in all_rows:
+            value_norms = [_normalize_alnum(v) for v in row.values()]
+            if any(cand in norm for cand in id_candidates for norm in value_norms):
+                matching_row = row
+                break
+        if matching_row is None:
+            return None  # ID not in any retrieved chunk
+        fields = matching_row
+    else:
+        fields = all_rows[0]
+
     display_fields = {
         key: value
         for key, value in fields.items()
@@ -382,15 +402,6 @@ def _structured_lookup_answer(question: str, context: str, source_types: set[str
 
     if not display_fields:
         return None
-
-    q_tokens = _question_tokens(question)
-    id_candidates = _extract_identifier_candidates(question)
-    asks_all = any(token in question.lower() for token in ["detail", "details", "all", "everything", "full", "extract"])
-
-    if id_candidates:
-        value_norms = [_normalize_alnum(value) for value in display_fields.values()]
-        if not any(candidate in value_norm for candidate in id_candidates for value_norm in value_norms):
-            return None
 
     scored_fields: list[tuple[int, str, str]] = []
     for key, value in display_fields.items():
@@ -427,8 +438,13 @@ def _list_all_records_answer(question: str, context: str, source_types: set[str]
     
     q_lower = question.lower()
     
-    # Detect "list all" type queries
-    is_list_query = any(phrase in q_lower for phrase in ["list all", "show all", "list the", "show the", "who are all", "which are all"])
+    # Detect "list all" type queries - must explicitly ask for ALL/multiple items
+    # Don't trigger on single record queries like "list details about X" or "show the order X"
+    explicit_list_all = any(phrase in q_lower for phrase in ["list all", "show all", "who are all", "which are all", "all the ", "all "])
+    has_singular_indicators = any(word in q_lower for word in ["detail", "details", "about", "for", "of ", "id", "order", "customer"])
+    
+    # Only treat as list query if explicitly asks for "all" AND not asking about specific item
+    is_list_query = explicit_list_all and not has_singular_indicators
     
     if not is_list_query:
         return None
@@ -532,15 +548,35 @@ def _list_all_records_answer(question: str, context: str, source_types: set[str]
     return header + "\n".join(lines)
 
 
+def _clean_context_for_llm(context: str) -> str:
+    """Strip raw chunk metadata markers so the LLM only sees clean field facts."""
+    # Extract the semantic 'This record shows ...' sections from each chunk
+    record_matches = re.findall(
+        r"This record shows\s+(.*?)(?:\s+Record details:|\s+Raw row mapping:|$)",
+        context,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if record_matches:
+        parts = [m.strip().rstrip(".") for m in record_matches if m.strip()]
+        return "\n\n".join(parts)
+    # Fallback for PDFs or plain text — strip known metadata prefixes
+    cleaned = re.sub(r"Business data row from [^\n.]+\.\s*", "", context)
+    cleaned = re.sub(r"Record details:[^\n]*\n?", "", cleaned)
+    cleaned = re.sub(r"Raw row mapping:[^\n]*\n?", "", cleaned)
+    cleaned = re.sub(r"Lookup keywords:[^\n]*\n?", "", cleaned)
+    return cleaned.strip()
+
+
 def _build_system_prompt(source_types: set[str]) -> str:
     if source_types & {"csv", "excel"}:
         return (
-            "You are a strict RAG assistant working with structured business records. "
-            "Answer ONLY from the provided context. When the context comes from CSV or Excel rows, "
-            "present the answer as a clear, structured list with bullet points or numbered items. "
-            "Show each record on a new line with key details separated by | symbols. "
-            "DO NOT output everything as a long paragraph. Use proper formatting. "
-            "If the answer is not available, say 'I don't know based on the uploaded data.'"
+            "You are a strict data analyst assistant. Answer ONLY using the provided context records. "
+            "Present facts cleanly — format field names properly (e.g. 'Order ID', 'Customer Name'). "
+            "DO NOT reproduce metadata markers such as 'Record details:', 'Business data row from', "
+            "'Raw row mapping:', 'Lookup keywords:', or '|' delimiters from the raw data. "
+            "If asked about a specific record, answer ONLY about that record. "
+            "Use bullet points for multiple items. "
+            "If the requested information is not in the context, say 'I don't know based on the uploaded data.'"
         )
 
     if source_types == {"pdf"}:
@@ -583,7 +619,11 @@ def _extractive_fallback_answer(question: str, context: str, source_types: set[s
             best = sentence
 
     if source_types & {"csv", "excel"}:
-        match = re.search(r"This record shows\s+(.*?)(?:\s+Raw row mapping:|$)", context, re.IGNORECASE | re.DOTALL)
+        match = re.search(
+            r"This record shows\s+(.*?)(?:\s+Record details:|\s+Raw row mapping:|$)",
+            context,
+            re.IGNORECASE | re.DOTALL,
+        )
         if match:
             structured_answer = match.group(1).strip().rstrip(".")
             return structured_answer + "."
@@ -601,11 +641,20 @@ def generate_answer(
     """Generate answer using Groq API (required). Raises on missing/invalid credentials."""
     source_types = source_types or set()
 
+    # Short-circuit for pre-computed aggregate results (avg/sum/count fast path)
+    agg_match = re.match(
+        r"Computed result:\s+(.+?)\s+=\s+([\d.]+)\s+\(based on (\d+) records\)",
+        context.strip(),
+    )
+    if agg_match:
+        label, value, count = agg_match.group(1), agg_match.group(2), agg_match.group(3)
+        return f"{label}: {float(value):.2f}  (computed from {count} records)"
+
     # For PDF-only queries, skip structured parsing and go straight to LLM
     if source_types == {"pdf"}:
         if not groq_api_key:
             raise ValueError("GROQ_API_KEY is required for answer generation.")
-        
+
         logger.debug("PDF-only query detected, using LLM directly")
         return _llm_generate(question, context, groq_api_key, groq_model, source_types)
 
@@ -647,13 +696,24 @@ def _llm_generate(
     try:
         logger.debug(f"Calling Groq API: model={groq_model}, source_types={source_types}")
         client = Groq(api_key=groq_api_key, timeout=30.0)
-        
+
+        # Clean context to remove raw chunk metadata before sending to LLM
+        clean_ctx = _clean_context_for_llm(context)
+
+        id_candidates = _extract_identifier_candidates(question)
+        id_hint = ""
+        if id_candidates:
+            id_hint = f" Answer ONLY about the record whose identifier matches '{question.strip()}'. Ignore all other records."
+
         # Build appropriate prompt based on source type
-        user_prompt = f"Context:\n{context}\n\nQuestion: {question}\n"
+        user_prompt = f"Context:\n{clean_ctx}\n\nQuestion: {question}\n"
         if source_types & {"csv", "excel"}:
             user_prompt += (
-                "Respond with a clear, well-formatted answer using bullet points or numbered lists when showing multiple items. "
-                "Do not output everything as a single paragraph."
+                f"{id_hint} "
+                "Give a single clean answer — do NOT repeat the same data in multiple formats. "
+                "For one record: list each field on its own line as 'Field: Value'. "
+                "For multiple records: use a numbered list. "
+                "Do NOT echo raw chunk text or metadata markers."
             )
         else:
             user_prompt += "Answer clearly and concisely based on the context provided."

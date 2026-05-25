@@ -121,7 +121,9 @@ class FileService:
         header_row = FileService._detect_header_row(df_raw)
         if header_row == 0:
             return FileService._promote_first_row_as_header_if_needed(df_raw)
-        df = pd.read_csv(file_path, header=header_row)
+        # df_raw was read with header=0, so df_raw.iloc[N] = file row N+1
+        # To re-read with the correct header, use header_row + 1
+        df = pd.read_csv(file_path, header=header_row + 1)
         df = df.dropna(how="all").reset_index(drop=True)
         return FileService._promote_first_row_as_header_if_needed(df)
 
@@ -135,7 +137,9 @@ class FileService:
             if header_row == 0:
                 result[sheet_name] = FileService._promote_first_row_as_header_if_needed(df_raw)
             else:
-                df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
+                # df_raw was read with header=0, so df_raw.iloc[N] = file row N+1
+                # To re-read with the correct header row, use header_row + 1
+                df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row + 1)
                 df = df.dropna(how="all").reset_index(drop=True)
                 result[sheet_name] = FileService._promote_first_row_as_header_if_needed(df)
         return result

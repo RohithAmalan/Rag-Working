@@ -1,4 +1,5 @@
 import warnings
+import asyncio
 
 # Suppress harmless multiprocessing warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
@@ -12,13 +13,57 @@ from app.routes.system_routes import router as system_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.evaluation_routes import router as evaluation_router
 from app.services.faiss_rag_service import FaissRagService
+from app.services.embedding_service import get_embedding_model
 from app.services.rag_service import RagService
 from app.utils.config import settings
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
+app = FastAPI(
+    title=settings.app_name,
+    version="1.0.0",
+    description="""
+    # 🤖 RAG Application API
+    
+    Production-grade Retrieval-Augmented Generation (RAG) system with:
+    - **LangGraph** multi-agent workflow orchestration
+    - **MongoDB** vector search with hybrid retrieval
+    - **Query Expansion** for better coverage
+    - **Cross-Encoder Reranking** for 20-30% accuracy boost
+    - **Citation Generation** with inline source attribution
+    
+    ## 🔐 Authentication
+    Use `/auth/login` to get a Bearer token, then include it in requests:
+    ```
+    Authorization: Bearer <your_token>
+    ```
+    
+    ## 📤 Upload Flow
+    1. Upload files: `POST /upload`
+    2. Query documents: `POST /query`
+    3. View documents: `GET /documents`
+    
+    ## 🎯 Demo Credentials
+    - Username: `admin` | Password: `admin123`
+    - Username: `demo` | Password: `demo123`
+    """,
+    contact={
+        "name": "RAG Support",
+        "email": "support@example.com",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    docs_url="/docs",  # Swagger UI
+    redoc_url="/redoc",  # ReDoc alternative
+    openapi_tags=[
+        {"name": "authentication", "description": "Login, logout, token management"},
+        {"name": "rag", "description": "Upload files and query documents"},
+        {"name": "system", "description": "Health checks and system status"},
+        {"name": "evaluation", "description": "RAG quality metrics (RAGAS)"},
+    ],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,6 +122,14 @@ async def startup_event():
         logger.info(f"Vector store ready: {stats}")
     except Exception as e:
         logger.warning(f"Could not retrieve stats: {e}")
+
+    # Warm the embedding model at startup so the first upload does not spend
+    # over a minute downloading/loading model weights during the request.
+    try:
+        await asyncio.to_thread(get_embedding_model)
+        logger.info("Embedding model preloaded successfully")
+    except Exception as e:
+        logger.warning(f"Could not preload embedding model: {e}")
 
 
 @app.on_event("shutdown")

@@ -1,0 +1,293 @@
+# =======================================================================
+# RAG Application - Unified Docker Compose Configuration
+# =======================================================================
+# Usage:
+#   Production:  docker-compose up
+#   Development: docker-compose --profile dev up
+#
+# The 'dev' profile enables hot-reload for backend and frontend.
+# =======================================================================
+
+services:
+  # MongoDB - Vector Database
+  mongodb:
+    image: mongo:7
+    container_name: rag-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password123}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-rag_db}
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - rag-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Response Caching
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  # MinIO - S3-compatible object storage
+  # Enabled for backward compatibility with existing uploaded files
+  minio:
+    image: minio/minio:latest
+    container_name: rag-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - ./.minio-data:/data
+    networks:
+      - rag-network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Keycloak - Identity and Access Management
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: rag-keycloak
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+      KC_DB: dev-file
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    command: start-dev --import-realm
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/rag-realm || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # Backend - FastAPI (Production)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rag-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # MongoDB
+      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password123@mongodb:27017}
+      DATABASE_NAME: ${MONGO_DB_NAME:-rag_db}
+      DOCUMENTS_COLLECTION: documents
+      CHUNKS_COLLECTION: chunks
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      REDIS_ENABLED: "true"
+      
+      # MinIO
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: rag-files
+      MINIO_USE_SSL: "false"
+      
+      # LLM
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-70b-versatile}
+      
+      # App
+      APP_NAME: "RAG Application"
+      ALLOW_START_WITHOUT_MONGO: "false"
+      LANGGRAPH_WORKFLOW_MODE: ${LANGGRAPH_WORKFLOW_MODE:-multi_agent}
+      
+      # Embedding
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+
+      # Keycloak
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-rag-realm}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rag-app}
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_vectorstore:/app/vectorstore
+      - ./.minio-data/rag-files:/app/minio-data:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    profiles:
+      - prod
+      - default
+
+  # Backend - Development (Hot Reload)
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rag-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # MongoDB
+      MONGODB_URI: ${BACKEND_DEV_MONGODB_URI:-mongodb://admin:password123@mongodb:27017/?authSource=admin}
+      DATABASE_NAME: ${MONGO_DB_NAME:-rag_db}
+      DOCUMENTS_COLLECTION: documents
+      CHUNKS_COLLECTION: chunks
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      REDIS_ENABLED: "true"
+      
+      # MinIO
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: rag-files
+      MINIO_USE_SSL: "false"
+      
+      # LLM
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-70b-versatile}
+      
+      # App
+      APP_NAME: "RAG Application"
+      ALLOW_START_WITHOUT_MONGO: "false"
+      LANGGRAPH_WORKFLOW_MODE: ${LANGGRAPH_WORKFLOW_MODE:-multi_agent}
+      DEBUG: "true"
+      
+      # Embedding
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+
+      # Keycloak
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-rag-realm}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rag-app}
+    volumes:
+      - ./backend:/app  # Hot reload for development
+      - backend_uploads:/app/uploads
+      - backend_vectorstore:/app/vectorstore
+    command: sh -c "pip install --no-cache-dir 'python-jose[cryptography]' && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    profiles:
+      - dev
+
+  # Frontend - React/Vite (Production)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    profiles:
+      - prod
+      - default
+
+  # Frontend - Development (Hot Reload)
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: rag-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - backend-dev
+    networks:
+      - rag-network
+    profiles:
+      - dev
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_vectorstore:
+    driver: local
+
+networks:
+  rag-network:
+    driver: bridge

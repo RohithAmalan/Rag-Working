@@ -1,141 +1,124 @@
-# RAG System
+# RAG Application - Production Ready
 
-Production-ready Retrieval-Augmented Generation (RAG) system with FastAPI backend and React frontend.
+Advanced Retrieval-Augmented Generation (RAG) system with LangGraph multi-agent workflow.
 
-![Backend CI](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/Backend%20CI/badge.svg)
-![Frontend CI](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/Frontend%20CI/badge.svg)
-![Integration Test](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/Full%20System%20Test/badge.svg)
-
-## Features
-
-- 🔐 **Authentication**: Simple login system with token-based auth
-- 📊 **Multi-source RAG**: Support for CSV, Excel, and PDF files
-- 🧠 **LangGraph Integration**: Advanced query routing with conditional logic
-- 💾 **Dual Storage**: MongoDB Atlas for production, FAISS for local development
-- 🎨 **Modern UI**: React + Vite with TailwindCSS
-- 🔍 **Semantic Search**: Vector similarity search with embeddings
-- 📈 **Analytics Dashboard**: Visualize your data with interactive charts
-- ✅ **Tested**: Comprehensive test suite with >70% coverage
-
-## Tech Stack
-
-### Backend
-- FastAPI
-- LangGraph
-- MongoDB Atlas / FAISS
-- Groq API (LLM)
-- Sentence Transformers (embeddings)
-- MinIO (object storage)
-
-### Frontend
-- React 18
-- Vite
-- TailwindCSS
-- React Router
-- Recharts
-- React Hot Toast
-
-## Quick Start
-
-### Backend Setup
+## 🚀 Quick Start
 
 ```bash
+# 1. Set up environment
+cp backend/.env.example .env
+# Edit .env and add your GROQ_API_KEY
+
+# 2. Start application
+docker-compose up -d
+
+# 3. Access
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:8000/docs
+```
+
+**Full instructions:** See [HOW_TO_RUN.md](HOW_TO_RUN.md)
+
+## 📊 Features
+
+- **Multi-Agent RAG Pipeline** - LangGraph Phase 3 workflow
+- **Smart Data Handling** - CSV/Excel (primary), PDF (secondary)
+- **Query Expansion** - 3 variations for better coverage  
+- **Cross-Encoder Reranking** - 20-30% accuracy boost
+- **Citation Generation** - Inline source attribution
+- **Analytics Dashboard** - Interactive data visualization
+- **MongoDB Vector Store** - Scalable vector search
+- **Docker Deployment** - One-command production setup
+
+## 🏗 Architecture
+
+```
+Backend:  FastAPI + LangGraph + MongoDB + FAISS
+Frontend: React + Vite + Tailwind CSS
+LLM:      Groq API (llama-3.1-70b-versatile)
+Embeddings: all-MiniLM-L6-v2
+```
+
+## 📁 Project Structure
+
+```
+├── backend/           # FastAPI application
+│   ├── app/
+│   │   ├── rag/      # RAG pipeline (LangGraph, chunking, generation)
+│   │   ├── services/ # Business logic (vector search, file handling)
+│   │   ├── routes/   # API endpoints
+│   │   └── db/       # MongoDB collections
+│   ├── tests/        # Unit tests
+│   └── Dockerfile    # Backend container
+├── frontend/          # React application
+│   ├── src/
+│   │   ├── pages/    # Dashboard, Analytics, Login
+│   │   ├── components/  # Reusable UI components
+│   │   └── services/ # API client
+│   └── Dockerfile    # Frontend container
+├── docs/archive/      # Old documentation (archived)
+└── docker-compose.yml # Unified Docker config
+```
+
+## 🔧 Configuration
+
+Environment variables in `.env`:
+
+```env
+# Required
+GROQ_API_KEY=your_key_here
+
+# Optional
+MINIO_ENABLED=false              # Use local storage
+LANGGRAPH_WORKFLOW_MODE=multi_agent  # Phase 3 workflow
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+```
+
+## 📚 Documentation
+
+- **[HOW_TO_RUN.md](HOW_TO_RUN.md)** - Complete setup and usage guide
+- **[BUG_FIXES_SUMMARY.md](BUG_FIXES_SUMMARY.md)** - Recent fixes and improvements
+- **[AGENTS.md](AGENTS.md)** - Agent customization instructions
+- **[docs/archive/](docs/archive/)** - Older documentation (archived)
+
+## 🎯 Recent Improvements
+
+✅ Fixed analytics dashboard MinIO error  
+✅ Fixed PDF upload and querying  
+✅ Improved answer generation quality  
+✅ Consolidated Docker configuration  
+✅ Disabled annoying auto-refresh  
+✅ Fixed single-record vs list-all queries  
+✅ Cleaned up file explorer  
+
+## 🧪 Development
+
+```bash
+# Development mode (hot-reload)
+docker-compose --profile dev up
+
+# Run tests
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pytest
 
-# Create .env file
-cp .env.example .env
-# Edit .env with your credentials
-
-# Run server
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# View logs
+docker-compose logs -f backend
 ```
 
-### Frontend Setup
+## 📝 API Endpoints
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### Running Tests
-
-```bash
-cd backend
-pytest --cov=app --cov-report=term
-```
-
-## Authentication
-
-Demo credentials:
-- Username: `admin` / Password: `admin123`
-- Username: `demo` / Password: `demo123`
-- Username: `user` / Password: `user123`
-
-## API Endpoints
-
-### Authentication
-- `POST /auth/login` - Login
-- `POST /auth/logout` - Logout
-- `GET /auth/verify` - Verify token
-
-### RAG Operations
-- `POST /upload` - Upload files
-- `POST /query` - Ask questions
-- `GET /documents` - List documents
-- `DELETE /documents/{filename}` - Delete document
-
-### System
+- `POST /upload` - Upload CSV/Excel/PDF files
+- `POST /query` - Ask questions (RAG pipeline)
+- `GET /documents` - List uploaded files
+- `GET /documents/analytics/{file}` - Get file analytics
 - `GET /health` - Health check
-- `GET /storage/status` - Storage status
 
-## Development
+**Full API docs:** http://localhost:8000/docs
 
-### Running Tests
-
-```bash
-# Backend tests
-cd backend
-pytest -v
-
-# With coverage
-pytest --cov=app --cov-report=html
-
-# Specific test file
-pytest tests/test_auth_service.py
-```
-
-### Code Quality
-
-```bash
-# Linting
-flake8 app
-
-# Formatting
-black app tests
-
-# Import sorting
-isort app tests
-```
-
-## CI/CD
-
-GitHub Actions workflows:
-- **Backend CI**: Runs tests on Python 3.10, 3.11, 3.12
-- **Frontend CI**: Builds and lints on Node 18, 20
-- **Integration Test**: Full system test with MongoDB
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
-## License
+## 📄 License
 
 MIT License
+
+---
+
+**Need help?** Check [HOW_TO_RUN.md](HOW_TO_RUN.md) or run `docker-compose logs -f backend`

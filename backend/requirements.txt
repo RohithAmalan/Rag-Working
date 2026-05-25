@@ -1,6 +1,9 @@
 fastapi
 uvicorn[standard]
 python-multipart
+# cache-bust: ensure backend image rebuild refreshes auth deps
+python-jose[cryptography]
+httpx
 pandas
 openpyxl
 pypdf
@@ -13,9 +16,12 @@ langchain-community
 langchain-openai
 langgraph
 langgraph-checkpoint
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers
 python-dotenv
 minio
+faiss-cpu
 
 # Testing dependencies
 pytest

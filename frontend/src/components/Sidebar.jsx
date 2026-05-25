@@ -1,16 +1,19 @@
+import { dedupeByFileName, getFilteredRagDocuments } from "../utils/ragDocuments";
+
 export default function Sidebar({ docs }) {
-  // Get unique files - deduplicate by file_name
-  const uniqueFiles = docs?.documents 
-    ? Array.from(
-        new Map(
-          docs.documents.map((doc) => [doc.file_name, doc])
-        ).values()
-      )
-    : [];
+  const rawDocuments = Array.isArray(docs?.documents) ? docs.documents : [];
+  const uniqueFiles = dedupeByFileName(getFilteredRagDocuments(rawDocuments));
+  const hiddenCount = Math.max(rawDocuments.length - uniqueFiles.length, 0);
+
+  const typeCounts = {
+    csv: uniqueFiles.filter((file) => file.source_type === "csv").length,
+    excel: uniqueFiles.filter((file) => file.source_type === "excel").length,
+    pdf: uniqueFiles.filter((file) => file.source_type === "pdf").length,
+  };
 
   return (
     <aside className="animate-rise rounded-3xl border border-white/70 bg-white/75 p-5 shadow-card backdrop-blur">
-      <h1 className="font-display text-xl font-bold text-ink">RAG Control Deck</h1>
+      <h1 className="font-display text-xl font-bold text-ink">RAG Explorer</h1>
       <p className="mt-2 text-sm text-ink/70">
         Excel and CSV are ranked first during retrieval, while PDFs are used as support context.
       </p>
@@ -26,9 +29,26 @@ export default function Sidebar({ docs }) {
         </div>
       </div>
 
-      {/* Display Indexed Files */}
+      <div className="mt-6 grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-xl bg-white/70 px-2 py-2 text-ink/80">
+          <p className="font-semibold">CSV</p>
+          <p>{typeCounts.csv}</p>
+        </div>
+        <div className="rounded-xl bg-white/70 px-2 py-2 text-ink/80">
+          <p className="font-semibold">Excel</p>
+          <p>{typeCounts.excel}</p>
+        </div>
+        <div className="rounded-xl bg-white/70 px-2 py-2 text-ink/80">
+          <p className="font-semibold">PDF</p>
+          <p>{typeCounts.pdf}</p>
+        </div>
+      </div>
+
       <div className="mt-6 space-y-3">
-        <h2 className="font-semibold text-ink">Indexed Files ({uniqueFiles.length})</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Indexed Files ({uniqueFiles.length})</h2>
+          {hiddenCount > 0 && <span className="text-[11px] text-ink/55">hidden unsupported: {hiddenCount}</span>}
+        </div>
         <div className="max-h-48 space-y-2 overflow-y-auto rounded-2xl bg-white/50 p-3">
           {uniqueFiles.length === 0 ? (
             <p className="text-sm text-ink/60">No files indexed yet</p>
@@ -42,12 +62,11 @@ export default function Sidebar({ docs }) {
                   <div className="flex-1">
                     <p className="truncate font-medium">{file.file_name}</p>
                     <p className="text-ink/60">
-                      {file.source_type === "csv" && "📊 CSV"}
-                      {(file.source_type === "xlsx" || file.source_type === "excel") && "📗 Excel"}
-                      {file.source_type === "pdf" && "📄 PDF"}
+                      {file.source_type === "csv" && "CSV"}
+                      {file.source_type === "excel" && "Excel"}
+                      {file.source_type === "pdf" && "PDF"}
                     </p>
                     <p className="text-ink/55">chunks: {file.chunks || 0}</p>
-                    <p className="text-ink/55">storage: {file.storage_backend || "local"}</p>
                     {file.analysis_report?.row_count !== undefined && (
                       <p className="text-ink/55">
                         rows: {file.analysis_report.row_count}

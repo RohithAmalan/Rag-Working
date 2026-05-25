@@ -107,12 +107,29 @@ async def retrieve_node(
         for query in queries:
             logger.info(f"Retrieving {candidate_count_per_query} candidates for: {query[:50]}...")
             
+            # Try primary sources first
             chunks = await mongo_service.search_chunks(
                 query_text=query,
                 top_k=candidate_count_per_query,
                 required_file_name=selected_file,
                 source_priority="primary",
             )
+            
+            # If not enough primary results and no strong exact match, add secondary sources
+            has_strong_primary_match = any(
+                float(chunk.get("similarity_score", 0.0)) >= 0.95
+                for chunk in chunks
+            )
+            
+            if len(chunks) < candidate_count_per_query and not has_strong_primary_match:
+                secondary_chunks = await mongo_service.search_chunks(
+                    query_text=query,
+                    top_k=candidate_count_per_query - len(chunks),
+                    required_file_name=selected_file,
+                    source_priority="secondary",
+                )
+                chunks.extend(secondary_chunks)
+                logger.info(f"Added {len(secondary_chunks)} secondary chunks (PDFs)")
             
             # Deduplicate by chunk ID
             for chunk in chunks:
@@ -127,7 +144,7 @@ async def retrieve_node(
         reranker = get_reranker_service()
         reranked_chunks = reranker.rerank(
             query=question,
-            chunks=chunks,
+            chunks=all_chunks,
             top_k=top_k
         )
         
@@ -136,13 +153,13 @@ async def retrieve_node(
             strategy = "exact+rerank"
         elif state.get("requires_ranking"):
             strategy = "ranking+rerank"
-        elif chunks and chunks[0].get("similarity_score", 0) > 0.95:
+        elif all_chunks and all_chunks[0].get("similarity_score", 0) > 0.95:
             strategy = "hybrid+rerank"
         else:
             strategy = "vector+rerank"
         
         logger.info(
-            f"Retrieved and reranked {len(chunks)} → {len(reranked_chunks)} chunks "
+            f"Retrieved and reranked {len(all_chunks)} → {len(reranked_chunks)} chunks "
             f"(strategy: {strategy}, top score: {reranked_chunks[0].get('rerank_score', 0):.3f})"
         )
         

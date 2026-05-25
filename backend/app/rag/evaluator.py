@@ -20,7 +20,7 @@ class RAGEvaluator:
     def _load_metrics(self):
         """Load RAGAS metrics."""
         try:
-            from ragas.metrics import (
+            from ragas.metrics import (  # type: ignore
                 answer_relevancy,
                 faithfulness,
                 context_recall,
@@ -62,7 +62,7 @@ class RAGEvaluator:
             return {"error": "RAGAS not available"}
         
         try:
-            from ragas import evaluate as ragas_evaluate
+            from ragas import evaluate as ragas_evaluate  # type: ignore
             
             # Prepare dataset
             data = {
@@ -134,7 +134,7 @@ class RAGEvaluator:
             return {"error": "No test cases provided"}
         
         try:
-            from ragas import evaluate as ragas_evaluate
+            from ragas import evaluate as ragas_evaluate  # type: ignore
             
             # Prepare batch dataset
             data = {

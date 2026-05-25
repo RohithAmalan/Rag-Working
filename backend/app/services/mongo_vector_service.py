@@ -34,8 +34,12 @@ def _extract_exact_terms(query_text: str) -> dict[str, list[str]]:
         has_digit = any(ch.isdigit() for ch in token)
         if has_alpha and has_digit:
             result["ids"].append(token)
-    
-    # Pattern 2: IDs with special characters like REG'100138 or REG-100138
+
+    # Pattern 2: Hyphenated / prefixed IDs like ORD-10028, C-5076, REG-100138, INV-001
+    for token in re.findall(r"\b[A-Za-z]{1,10}[-'][0-9]{2,}\b", query_text):
+        result["ids"].append(token)
+
+    # Pattern 3: IDs with special characters like REG'100138 (no hyphen pattern above)
     for token in re.findall(r"\b[A-Za-z]+['\-]?[0-9]{6,}\b", query_text):
         # Clean punctuation from the ID
         cleaned_id = re.sub(r"['\-_]", "", token)
@@ -334,8 +338,91 @@ class MongoVectorService:
 
         logger.debug(f"Query analysis: ids={len(exact_terms['ids'])}, phones={len(exact_terms['phones'])}, names={len(exact_terms['names'])}")
 
-        # ============ FAST PATH: numeric metric ranking in selected file ============
+        # ============ FAST PATH: aggregate computation (avg / sum / count) ============
         q_lower = query_text.lower()
+        _AGG_KEYWORDS: dict[str, str] = {
+            "average": "avg", "avg": "avg", "mean": "avg",
+            "total": "sum", "sum": "sum",
+            "how many": "count", "number of": "count", "count": "count",
+        }
+        asks_aggregate: str | None = None
+        for kw, agg_type in _AGG_KEYWORDS.items():
+            if kw in q_lower:
+                asks_aggregate = agg_type
+                break
+
+        # Only run aggregate path when a file scope is known (required_file_name or file hint)
+        if asks_aggregate and (required_file_name or file_hint_filter):
+            agg_clauses: list[dict[str, Any]] = []
+            if required_file_filter:
+                agg_clauses.append(required_file_filter)
+            elif file_hint_filter:
+                agg_clauses.append(file_hint_filter)
+            if source_priority:
+                agg_clauses.append({"metadata.source_priority": source_priority})
+
+            agg_filter = {"$and": agg_clauses} if len(agg_clauses) > 1 else (agg_clauses[0] if agg_clauses else {})
+            all_agg_chunks = await self.db[settings.chunks_collection].find(agg_filter).to_list(length=None)
+            logger.info(f"Aggregate fast path: fetched {len(all_agg_chunks)} chunks for '{asks_aggregate}' query")
+
+            key_votes: dict[str, int] = {}
+            cached_facts: list[tuple[dict[str, Any], dict[str, float]]] = []
+            for row in all_agg_chunks:
+                facts = _extract_numeric_facts(str(row.get("chunk_text", "")))
+                if not facts:
+                    continue
+                cached_facts.append((row, facts))
+                chosen = _choose_metric_key(query_text, facts)
+                if chosen:
+                    norm = _normalize_metric_key(chosen)
+                    key_votes[norm] = key_votes.get(norm, 0) + 1
+
+            if cached_facts and key_votes:
+                best_key_norm = max(key_votes, key=lambda k: key_votes[k])
+
+                # Collect all values for the winning metric
+                values: list[float] = []
+                display_field_name = best_key_norm  # fallback
+                for row, facts in cached_facts:
+                    for key, value in facts.items():
+                        if _normalize_metric_key(key) == best_key_norm:
+                            if display_field_name == best_key_norm:
+                                display_field_name = key.title()
+                            values.append(value)
+                            break
+
+                if values:
+                    if asks_aggregate == "avg":
+                        result_val = sum(values) / len(values)
+                        agg_label = "Average"
+                    elif asks_aggregate == "sum":
+                        result_val = sum(values)
+                        agg_label = "Total"
+                    else:  # count
+                        result_val = float(len(values))
+                        agg_label = "Count"
+
+                    synthetic = (
+                        f"Computed result: {agg_label} {display_field_name} = {result_val:.2f} "
+                        f"(based on {len(values)} records)"
+                    )
+                    logger.info(f"Aggregate result: {synthetic}")
+                    return [
+                        {
+                            "chunk_text": synthetic,
+                            "source": required_file_name or "aggregate",
+                            "document_id": "",
+                            "chunk_index": 0,
+                            "similarity_score": 1.0,
+                            "metadata": {
+                                "source_type": "excel",
+                                "source_priority": "primary",
+                                "file_name": required_file_name or "",
+                            },
+                        }
+                    ]
+
+        # ============ FAST PATH: numeric metric ranking in selected file ============
         asks_metric_rank = any(token in q_lower for token in ["price", "sales", "quantity", "amount", "cost", "revenue", "score", "value", "profit", "discount"]) and any(
             token in q_lower for token in ["highest", "max", "top", "lowest", "minimum", "min"]
         )

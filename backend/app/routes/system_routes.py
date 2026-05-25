@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.models.schemas import HealthResponse
 from app.utils.config import settings
 
-router = APIRouter()
+router = APIRouter(tags=["system"])
 
 
 @router.get("/health", response_model=HealthResponse)

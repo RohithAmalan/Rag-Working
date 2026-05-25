@@ -63,6 +63,11 @@ class Settings(BaseSettings):
         validation_alias="LANGGRAPH_WORKFLOW_MODE",
     )
 
+    # Keycloak Configuration
+    keycloak_url: str = Field(default="", validation_alias="KEYCLOAK_URL")
+    keycloak_realm: str = Field(default="rag-realm", validation_alias="KEYCLOAK_REALM")
+    keycloak_client_id: str = Field(default="rag-app", validation_alias="KEYCLOAK_CLIENT_ID")
+
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
         env_file_encoding="utf-8",

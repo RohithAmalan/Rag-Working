@@ -129,11 +129,18 @@ class RagService:
                 logger.error(f"Error processing {file.filename}: {e}")
                 stats["errors"].append(f"{file.filename}: {str(e)}")
             finally:
+                # Only delete local file if MinIO is enabled (file is backed up to MinIO)
+                # If MinIO is disabled, keep the local file for analytics/preview
                 if saved_path is not None and saved_path.exists():
-                    try:
-                        saved_path.unlink(missing_ok=True)
-                    except Exception as unlink_exc:
-                        logger.warning(f"Could not remove local temp file {saved_path}: {unlink_exc}")
+                    storage_backend = storage_info.get("storage_backend", "local") if 'storage_info' in locals() else "local"
+                    if storage_backend == "minio" and settings.minio_enabled:
+                        try:
+                            saved_path.unlink(missing_ok=True)
+                            logger.debug(f"Removed local temp file (backed up to MinIO): {saved_path}")
+                        except Exception as unlink_exc:
+                            logger.warning(f"Could not remove local temp file {saved_path}: {unlink_exc}")
+                    else:
+                        logger.debug(f"Keeping local file for analytics/preview: {saved_path}")
 
         logger.info(f"Upload processing complete: {stats}")
         return stats

@@ -1,16 +1,13 @@
+import { dedupeByFileName, getFilteredRagDocuments } from "../utils/ragDocuments";
+
 export default function DashboardSidebar({ documents, selectedFile, onSelectFile }) {
-  // Get unique files - deduplicate by file_name
-  const uniqueFiles = documents?.documents 
-    ? Array.from(
-        new Map(
-          documents.documents.map((doc) => [doc.file_name, doc])
-        ).values()
-      )
-    : [];
+  const uniqueFiles = dedupeByFileName(
+    getFilteredRagDocuments(Array.isArray(documents?.documents) ? documents.documents : [])
+  );
 
   // Filter out PDFs for data dashboard (show only Excel/CSV)
   const dataFiles = uniqueFiles.filter(
-    (file) => file.source_type === "csv" || file.source_type === "excel" || file.source_type === "xlsx"
+    (file) => file.source_type === "csv" || file.source_type === "excel"
   );
 
   return (
@@ -62,7 +59,7 @@ export default function DashboardSidebar({ documents, selectedFile, onSelectFile
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-[10px]">
                         {file.source_type === "csv" && "📊 CSV"}
-                        {(file.source_type === "xlsx" || file.source_type === "excel") && "📗 Excel"}
+                        {file.source_type === "excel" && "📗 Excel"}
                       </span>
                       {file.analysis_report?.row_count !== undefined && (
                         <span className="text-[10px] opacity-70">
