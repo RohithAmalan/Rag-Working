@@ -6,6 +6,7 @@ from fastapi import Header, HTTPException, Depends
 
 from app.services import auth_service
 from app.services.keycloak_service import keycloak_service
+from app.utils.constants import Roles, APIMessages
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +41,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     # For legacy auth, assign default roles based on username
     roles = []
     if username == "admin":
-        roles = ["admin", "user"]
+        roles = [Roles.ADMIN, Roles.USER]
     else:
-        roles = ["user"]
+        roles = [Roles.USER]
     
     return {
         "username": username,
@@ -67,11 +68,11 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """
     user_roles = current_user.get("roles", [])
     
-    if "admin" not in user_roles:
+    if Roles.ADMIN not in user_roles:
         logger.warning(f"Access denied: User {current_user.get('username')} attempted admin action without admin role")
         raise HTTPException(
             status_code=403,
-            detail="Admin access required. You do not have permission to perform this action."
+            detail=APIMessages.FORBIDDEN_ADMIN
         )
     
     logger.info(f"Admin access granted to user: {current_user.get('username')}")

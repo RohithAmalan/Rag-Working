@@ -2,6 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import keycloak from "../keycloak";
+import { STORAGE_KEYS } from "../config/constants";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -34,15 +35,15 @@ export default function Login({ onLogin }) {
         throw new Error(data.detail || "Login failed");
       }
 
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("username", data.username);
+      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.access_token);
+      localStorage.setItem(STORAGE_KEYS.USERNAME, data.username);
       // Store user roles for RBAC
       if (data.roles) {
-        localStorage.setItem("user_roles", JSON.stringify(data.roles));
+        localStorage.setItem(STORAGE_KEYS.USER_ROLES, JSON.stringify(data.roles));
       }
       // Keep refresh_token for future token rotation
       if (data.refresh_token) {
-        localStorage.setItem("refresh_token", data.refresh_token);
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
       }
 
       toast.success(data.message || "Login successful!");

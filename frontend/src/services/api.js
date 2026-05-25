@@ -1,16 +1,31 @@
 import axios from "axios";
-import { API_CONFIG } from "../config/constants";
+import { API_CONFIG, STORAGE_KEYS } from "../config/constants";
 
 const api = axios.create({
   baseURL: API_CONFIG.baseURL,
   timeout: API_CONFIG.timeout,
 });
 
+// Add auth token to all requests
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export const uploadFiles = async (files) => {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
   const { data } = await api.post("/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
+    timeout: 0,
   });
   return data;
 };

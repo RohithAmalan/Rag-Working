@@ -64,14 +64,14 @@ def get_rag_service() -> RagService:
 async def upload_documents(
     files: list[UploadFile] = File(..., description="Files to upload (CSV, XLSX, PDF)"),
     rag_service: RagService = Depends(get_rag_service),
-    current_user: dict = Depends(require_admin),  # Admin only
+    current_user: dict = Depends(require_user),  # Authenticated users
 ):
-    """Upload and process files (PDF, CSV, XLSX). **Admin only.**
+    """Upload and process files (PDF, CSV, XLSX). **Requires authentication.**
 
     Args:
         files: List of files to upload
         rag_service: RAG service instance
-        current_user: Current authenticated admin user
+        current_user: Current authenticated user
 
     Returns:
         Upload processing statistics

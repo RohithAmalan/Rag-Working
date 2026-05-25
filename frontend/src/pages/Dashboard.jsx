@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { memo } from "react";
 import ChatPanel from "../components/ChatPanel";
 import ContextViewer from "../components/ContextViewer";
 import ReportPanel from "../components/ReportPanel";
@@ -6,7 +7,7 @@ import Sidebar from "../components/Sidebar";
 import StatsCards from "../components/StatsCards";
 import UploadPanel from "../components/UploadPanel";
 
-export default function Dashboard(props) {
+const Dashboard = memo(function Dashboard(props) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#fff1df,_#dff8ff_40%,_#f4f4f5_75%)] p-4 sm:p-6">
       {/* Header Navigation */}
@@ -64,8 +65,6 @@ export default function Dashboard(props) {
             />
             <ChatPanel
               chatHistory={props.chatHistory}
-              question={props.question}
-              setQuestion={props.setQuestion}
               onAsk={props.onAsk}
               loading={props.askLoading}
               error={props.askError}
@@ -79,6 +78,7 @@ export default function Dashboard(props) {
             docs={props.documents}
             deletingDocumentId={props.deletingDocumentId}
             onDeleteDocument={props.onDeleteDocument}
+            isAdmin={props.isAdmin}
           />
 
           <ContextViewer chunks={props.retrievedChunks} />
@@ -86,4 +86,6 @@ export default function Dashboard(props) {
       </div>
     </div>
   );
-}
+});
+
+export default Dashboard;

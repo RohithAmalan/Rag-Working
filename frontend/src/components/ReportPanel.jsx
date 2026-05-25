@@ -1,17 +1,20 @@
 import { useMemo, useState } from "react";
+import { dedupeByFileName, getFilteredRagDocuments } from "../utils/ragDocuments";
 
-export default function ReportPanel({ docs, onDeleteDocument, deletingDocumentId }) {
-  const items = Array.isArray(docs?.documents) ? docs.documents : [];
+export default function ReportPanel({ docs, onDeleteDocument, deletingDocumentId, isAdmin = false }) {
+  const items = dedupeByFileName(
+    getFilteredRagDocuments(Array.isArray(docs?.documents) ? docs.documents : [])
+  );
   const [selectedKey, setSelectedKey] = useState("");
 
   const selectedDoc = useMemo(() => {
     if (!items.length) return null;
 
-    const defaultKey = `${items[0].file_name || "Unknown file"}-0`;
+    const defaultKey = `${items[0].document_id || items[0].file_name || "Unknown file"}-0`;
     const activeKey = selectedKey || defaultKey;
 
     const found = items.find((doc, idx) => {
-      const key = `${doc.file_name || "Unknown file"}-${idx}`;
+      const key = `${doc.document_id || doc.file_name || "Unknown file"}-${idx}`;
       return key === activeKey;
     });
 
@@ -99,8 +102,8 @@ export default function ReportPanel({ docs, onDeleteDocument, deletingDocumentId
           const sourceType = doc.source_type || "unknown";
           const storage = doc.storage_backend || "local";
           const storagePath = doc.storage_path || "";
-          const key = `${fileName}-${idx}`;
-          const isSelected = selectedDoc && selectedDoc.file_name === fileName && selectedDoc.source_type === sourceType;
+          const key = `${doc.document_id || fileName}-${idx}`;
+          const isSelected = selectedDoc && selectedDoc.document_id === doc.document_id;
 
           return (
             <div
@@ -125,21 +128,24 @@ export default function ReportPanel({ docs, onDeleteDocument, deletingDocumentId
                 <span className="text-xs uppercase tracking-wide text-ink/60">{sourceType}</span>
               </div>
 
-              <div className="mt-2 flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (doc.document_id && onDeleteDocument) {
-                      onDeleteDocument(doc.document_id, fileName);
-                    }
-                  }}
-                  disabled={!doc.document_id || deletingDocumentId === fileName}
-                  className="rounded-lg border border-coral/40 bg-white px-2 py-1 text-xs font-semibold text-coral transition hover:bg-coral/10 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {deletingDocumentId === fileName ? "Deleting..." : "Delete"}
-                </button>
-              </div>
+              {/* Delete Button - Admin Only */}
+              {isAdmin && (
+                <div className="mt-2 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (doc.document_id && onDeleteDocument) {
+                        onDeleteDocument(doc.document_id, fileName);
+                      }
+                    }}
+                    disabled={!doc.document_id || deletingDocumentId === fileName}
+                    className="rounded-lg border border-coral/40 bg-white px-2 py-1 text-xs font-semibold text-coral transition hover:bg-coral/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deletingDocumentId === fileName ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              )}
 
               <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-ink/80 sm:grid-cols-2">
                 <p>chunks: {doc.chunks || 0}</p>

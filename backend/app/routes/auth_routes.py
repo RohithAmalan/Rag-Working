@@ -9,6 +9,7 @@ from jose import jwt as jose_jwt
 from app.models.auth import LoginRequest, LoginResponse, User
 from app.services import auth_service
 from app.services.keycloak_service import keycloak_service
+from app.utils.constants import Roles, APIMessages
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ async def login(request: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     # Assign default roles for legacy auth
-    roles = ["admin", "user"] if request.username == "admin" else ["user"]
+    roles = [Roles.ADMIN, Roles.USER] if request.username == "admin" else [Roles.USER]
     
     access_token = auth_service.create_access_token(request.username)
     logger.info(f"User {request.username} logged in via legacy auth with roles: {roles}")
@@ -169,7 +170,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     # Assign default roles for legacy auth
-    roles = ["admin", "user"] if username == "admin" else ["user"]
+    roles = [Roles.ADMIN, Roles.USER] if username == "admin" else [Roles.USER]
     
     return User(username=username, roles=roles, is_active=True)
 

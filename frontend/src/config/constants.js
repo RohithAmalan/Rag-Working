@@ -3,13 +3,25 @@ const ENV = import.meta.env;
 
 export const API_CONFIG = {
   baseURL: ENV.VITE_API_BASE_URL || 'http://localhost:8000',
-  timeout: parseInt(ENV.VITE_API_TIMEOUT) || 60000,
+  timeout: parseInt(ENV.VITE_API_TIMEOUT) || 300000, // 5 minutes for embedding model loading on first upload
 };
 
 export const AUTH_CONFIG = {
   tokenKey: 'access_token',
   usernameKey: 'username',
   tokenType: 'bearer',
+};
+
+export const ROLES = {
+  ADMIN: 'admin',
+  USER: 'user',
+};
+
+export const STORAGE_KEYS = {
+  ACCESS_TOKEN: 'access_token',
+  USERNAME: 'username',
+  REFRESH_TOKEN: 'refresh_token',
+  USER_ROLES: 'user_roles',
 };
 
 export const UPLOAD_CONFIG = {

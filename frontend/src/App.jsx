@@ -7,6 +7,7 @@ import DataDashboard from "./pages/DataDashboard";
 import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import Login from "./pages/Login";
 import { askQuestion, deleteDocumentsByName, fetchDocuments, fetchStorageStatus, uploadFiles } from "./services/api";
+import { ROLES, STORAGE_KEYS } from "./config/constants";
 
 export default function App({ keycloak }) {
   const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, false = not logged in, true = logged in
@@ -74,9 +75,9 @@ export default function App({ keycloak }) {
 
   useEffect(() => {
     // Check if user is already logged in
-    const token = localStorage.getItem("access_token");
-    const storedUsername = localStorage.getItem("username");
-    const storedRoles = localStorage.getItem("user_roles");
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const storedUsername = localStorage.getItem(STORAGE_KEYS.USERNAME);
+    const storedRoles = localStorage.getItem(STORAGE_KEYS.USER_ROLES);
     
     if (token && storedUsername) {
       setIsAuthenticated(true);
@@ -207,8 +208,8 @@ export default function App({ keycloak }) {
   };
 
   const handleLogout = async () => {
-    const token = localStorage.getItem("access_token");
-    const refreshToken = localStorage.getItem("refresh_token");
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
     if (token) {
       try {
@@ -227,15 +228,15 @@ export default function App({ keycloak }) {
     }
 
     // Clear local storage
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("username");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("user_roles"); // Clear roles
+    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USERNAME);
+    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USER_ROLES);
 
     // Reset state
     setIsAuthenticated(false);
     setUsername("");
-    setUserRoles([]); // Clear roles from state
+    setUserRoles([]);
 
     // If Keycloak session exists, also log out from Keycloak (clears SSO session)
     if (keycloak?.authenticated) {
@@ -290,7 +291,7 @@ export default function App({ keycloak }) {
               onDeleteDocument={handleDeleteDocument}
               username={username}
               onLogout={handleLogout}
-              isAdmin={userRoles.includes('admin')} // RBAC: Check admin role
+              isAdmin={userRoles.includes(ROLES.ADMIN)}
             />
           </ProtectedRoute>
         }
@@ -304,7 +305,7 @@ export default function App({ keycloak }) {
               onRefresh={loadDocuments}
               username={username}
               onLogout={handleLogout}
-              isAdmin={userRoles.includes('admin')} // RBAC: Check admin role
+              isAdmin={userRoles.includes(ROLES.ADMIN)}
             />
           </ProtectedRoute>
         }
@@ -318,7 +319,7 @@ export default function App({ keycloak }) {
               onRefresh={loadDocuments}
               username={username}
               onLogout={handleLogout}
-              isAdmin={userRoles.includes('admin')} // RBAC: Check admin role
+              isAdmin={userRoles.includes(ROLES.ADMIN)}
             />
           </ProtectedRoute>
         }
