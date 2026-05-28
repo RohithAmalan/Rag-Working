@@ -1,0 +1,13 @@
+# Safety vulnerability scanning policy
+# Ignore specific vulnerabilities (if needed)
+security:
+  ignore-vulnerabilities:
+    # Example: ignore specific CVE if it doesn't apply
+    # - 12345  # CVE-YYYY-XXXXX - Reason for ignoring
+
+  # Minimum severity level to report
+  # Options: critical, high, medium, low
+  minimum-severity: medium
+
+  # Continue on error
+  continue-on-error: false

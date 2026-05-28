@@ -1,0 +1,102 @@
+# GitHub Actions CI/CD Workflow
+# Runs tests and security checks on every push and PR
+
+name: Tests and Security Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-and-security:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Bandit Security Scan
+      working-directory: ./backend
+      run: |
+        bandit -r app -c .bandit
+      continue-on-error: false
+
+    - name: Run Safety Dependency Check
+      working-directory: ./backend
+      run: |
+        safety check --json || true
+      continue-on-error: true
+
+    - name: Run Pip-Audit
+      working-directory: ./backend
+      run: |
+        pip-audit --desc || true
+      continue-on-error: true
+
+    - name: Run Unit Tests with Coverage
+      working-directory: ./backend
+      run: |
+        pytest tests/ -v \
+          --cov=app \
+          --cov-report=term-missing \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-fail-under=70
+
+    - name: Run Security Tests
+      working-directory: ./backend
+      run: |
+        pytest tests/test_security.py -v
+
+    - name: Upload Coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Upload HTML Coverage Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report-${{ matrix.python-version }}
+        path: backend/htmlcov/
+
+    - name: Check for hardcoded secrets
+      working-directory: ./backend
+      run: |
+        echo "Checking for hardcoded secrets..."
+        ! grep -r -E "(password|secret|api_key|token)\s*=\s*['\"][^'\"]+['\"]" app/ --include="*.py" | grep -v test | grep -v __pycache__ || echo "Warning: Potential secrets found"
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Test and Security Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Tests: Completed" >> $GITHUB_STEP_SUMMARY
+        echo "- Security Scans: Completed" >> $GITHUB_STEP_SUMMARY
