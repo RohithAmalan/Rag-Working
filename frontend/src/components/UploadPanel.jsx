@@ -1,8 +1,31 @@
+import { useAuth, ROLES } from '../hooks/useAuth';
+
 export default function UploadPanel({ files, onPickFiles, onUpload, uploading, uploadResult, error, storageStatus }) {
+  const { isAdmin, hasRole } = useAuth();
   const minioEnabled = Boolean(storageStatus?.minio?.enabled);
   const minioConnected = Boolean(storageStatus?.minio?.connected);
   const minioEndpoint = storageStatus?.minio?.endpoint || "localhost:9000";
   const canUpload = storageStatus?.can_upload !== false;
+
+  // Only admins can upload files
+  if (!isAdmin()) {
+    return (
+      <section className="animate-rise rounded-3xl border border-white/70 bg-white/85 p-5 shadow-card">
+        <h2 className="font-display text-lg font-semibold text-ink">Upload Data Sources</h2>
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-900">
+            <span className="text-xl">🔒</span>
+            <div>
+              <p className="font-medium">Admin Access Required</p>
+              <p className="mt-1 text-sm text-amber-800">
+                Only administrators can upload files. Contact your admin to add new data sources.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="animate-rise rounded-3xl border border-white/70 bg-white/85 p-5 shadow-card">

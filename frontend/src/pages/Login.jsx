@@ -41,6 +41,12 @@ export default function Login({ onLogin }) {
       if (data.roles) {
         localStorage.setItem(STORAGE_KEYS.USER_ROLES, JSON.stringify(data.roles));
       }
+      // Store complete user object for useAuth hook
+      localStorage.setItem('user', JSON.stringify({
+        username: data.username,
+        roles: data.roles || [],
+        email: data.email || ''
+      }));
       // Keep refresh_token for future token rotation
       if (data.refresh_token) {
         localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);

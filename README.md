@@ -1,124 +1,111 @@
-# RAG Application - Production Ready
+# RAG Application with Keycloak SSO
 
-Advanced Retrieval-Augmented Generation (RAG) system with LangGraph multi-agent workflow.
+Production-ready Retrieval-Augmented Generation (RAG) system with enterprise SSO authentication, role-based access control, and multi-application architecture.
+
+## 🎯 Overview
+
+A comprehensive RAG ecosystem featuring:
+- **RAG App** - Excel/CSV semantic search with natural language queries
+- **HR App** - Employee management with role-based permissions
+- **Finance App** - Expense management and approval workflow
+- **Keycloak SSO** - Single sign-on across all applications
 
 ## 🚀 Quick Start
 
+### Prerequisites
+- Python 3.11+ | Node.js 18+ | Docker & Docker Compose
+
+### 1. Start Infrastructure
 ```bash
-# 1. Set up environment
-cp backend/.env.example .env
-# Edit .env and add your GROQ_API_KEY
-
-# 2. Start application
-docker-compose up -d
-
-# 3. Access
-# Frontend: http://localhost:5173
-# Backend API: http://localhost:8000/docs
+docker-compose up -d keycloak mongodb redis minio
 ```
 
-**Full instructions:** See [HOW_TO_RUN.md](HOW_TO_RUN.md)
+### 2. Configure Keycloak
+See [KEYCLOAK_SSO_SETUP.md](./KEYCLOAK_SSO_SETUP.md) for complete setup guide.
 
-## 📊 Features
+### 3. Run Applications
+```bash
+# Backend
+cd backend && source ../.venv/bin/activate
+uvicorn app.main:app --reload --port 8000
 
-- **Multi-Agent RAG Pipeline** - LangGraph Phase 3 workflow
-- **Smart Data Handling** - CSV/Excel (primary), PDF (secondary)
-- **Query Expansion** - 3 variations for better coverage  
-- **Cross-Encoder Reranking** - 20-30% accuracy boost
-- **Citation Generation** - Inline source attribution
-- **Analytics Dashboard** - Interactive data visualization
-- **MongoDB Vector Store** - Scalable vector search
-- **Docker Deployment** - One-command production setup
+# Frontend
+cd frontend && npm run dev
 
-## 🏗 Architecture
-
-```
-Backend:  FastAPI + LangGraph + MongoDB + FAISS
-Frontend: React + Vite + Tailwind CSS
-LLM:      Groq API (llama-3.1-70b-versatile)
-Embeddings: all-MiniLM-L6-v2
+# Demo Apps (optional)
+./start-sso-apps.sh
 ```
 
-## 📁 Project Structure
+## 📱 Access URLs
+
+- **RAG App**: http://localhost:5173
+- **HR App**: http://localhost:3001
+- **Finance App**: http://localhost:3002
+- **API Docs**: http://localhost:8000/docs
+- **Keycloak**: http://localhost:8080
+
+## 📂 Structure
 
 ```
-├── backend/           # FastAPI application
-│   ├── app/
-│   │   ├── rag/      # RAG pipeline (LangGraph, chunking, generation)
-│   │   ├── services/ # Business logic (vector search, file handling)
-│   │   ├── routes/   # API endpoints
-│   │   └── db/       # MongoDB collections
-│   ├── tests/        # Unit tests
-│   └── Dockerfile    # Backend container
-├── frontend/          # React application
-│   ├── src/
-│   │   ├── pages/    # Dashboard, Analytics, Login
-│   │   ├── components/  # Reusable UI components
-│   │   └── services/ # API client
-│   └── Dockerfile    # Frontend container
-├── docs/archive/      # Old documentation (archived)
-└── docker-compose.yml # Unified Docker config
+RAG/
+├── backend/         # FastAPI API
+├── frontend/        # React UI
+├── hr-app/          # HR Management
+├── finance-app/     # Finance Management
+├── docs/            # Documentation
+│   ├── setup-guides/   # Setup instructions
+│   └── archive/        # Legacy docs
+└── keycloak/        # SSO config
 ```
 
-## 🔧 Configuration
+## 🔑 Default Login
 
-Environment variables in `.env`:
-
-```env
-# Required
-GROQ_API_KEY=your_key_here
-
-# Optional
-MINIO_ENABLED=false              # Use local storage
-LANGGRAPH_WORKFLOW_MODE=multi_agent  # Phase 3 workflow
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-```
+**Keycloak Admin**: admin / admin  
+**Test User**: rohith / password (configure in Keycloak first)
 
 ## 📚 Documentation
 
-- **[HOW_TO_RUN.md](HOW_TO_RUN.md)** - Complete setup and usage guide
-- **[BUG_FIXES_SUMMARY.md](BUG_FIXES_SUMMARY.md)** - Recent fixes and improvements
-- **[AGENTS.md](AGENTS.md)** - Agent customization instructions
-- **[docs/archive/](docs/archive/)** - Older documentation (archived)
+- [**HOW_TO_RUN.md**](./HOW_TO_RUN.md) - Complete setup guide
+- [**KEYCLOAK_SSO_SETUP.md**](./KEYCLOAK_SSO_SETUP.md) - SSO configuration
+- [**TESTING_GUIDE.md**](./TESTING_GUIDE.md) - Testing instructions
+- [**SSO_DEMO_APPS_SUMMARY.md**](./SSO_DEMO_APPS_SUMMARY.md) - Demo apps overview
+- [**AGENTS.md**](./AGENTS.md) - Backend AI agent instructions
+- [docs/setup-guides/](./docs/setup-guides/) - Additional guides
 
-## 🎯 Recent Improvements
+## 🛠 Tech Stack
 
-✅ Fixed analytics dashboard MinIO error  
-✅ Fixed PDF upload and querying  
-✅ Improved answer generation quality  
-✅ Consolidated Docker configuration  
-✅ Disabled annoying auto-refresh  
-✅ Fixed single-record vs list-all queries  
-✅ Cleaned up file explorer  
+**Backend**: FastAPI · LangChain · FAISS · MongoDB · MinIO · Groq  
+**Frontend**: React 18 · Vite · Tailwind · Keycloak JS  
+**Infrastructure**: Docker · Keycloak · MongoDB · Redis
 
-## 🧪 Development
+## 🎯 Features
+
+✅ Excel/CSV semantic search  
+✅ Natural language queries with RAG  
+✅ Enterprise SSO (Keycloak)  
+✅ Role-based access control (RBAC)  
+✅ Multi-app authentication  
+✅ Vector similarity search  
+✅ Citation tracking  
+✅ Comprehensive unit testing  
+✅ CodeQL security analysis  
+
+## 🧪 Testing
 
 ```bash
-# Development mode (hot-reload)
-docker-compose --profile dev up
-
-# Run tests
 cd backend
-pytest
-
-# View logs
-docker-compose logs -f backend
+pytest tests/ -v --cov=app
 ```
 
-## 📝 API Endpoints
+See [TESTING_GUIDE.md](./TESTING_GUIDE.md) for details.
 
-- `POST /upload` - Upload CSV/Excel/PDF files
-- `POST /query` - Ask questions (RAG pipeline)
-- `GET /documents` - List uploaded files
-- `GET /documents/analytics/{file}` - Get file analytics
-- `GET /health` - Health check
+## 🐛 Troubleshooting
 
-**Full API docs:** http://localhost:8000/docs
-
-## 📄 License
-
-MIT License
+**Keycloak**: `docker-compose restart keycloak`  
+**MongoDB**: Check port 27017 with `lsof -i :27017`  
+**SSO Issues**: Verify clients configured in Keycloak  
+**Frontend timeout**: Check backend is running on port 8000
 
 ---
 
-**Need help?** Check [HOW_TO_RUN.md](HOW_TO_RUN.md) or run `docker-compose logs -f backend`
+**For detailed setup instructions, see [HOW_TO_RUN.md](./HOW_TO_RUN.md)**

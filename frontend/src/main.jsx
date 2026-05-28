@@ -22,9 +22,22 @@ async function initKeycloak() {
     });
 
     if (authenticated) {
+      // Extract user info from Keycloak token
+      const username = keycloak.tokenParsed?.preferred_username || "";
+      const email = keycloak.tokenParsed?.email || "";
+      const roles = keycloak.tokenParsed?.realm_access?.roles || [];
+      
       // Store Keycloak token so the existing api.js interceptor picks it up
       localStorage.setItem("access_token", keycloak.token);
-      localStorage.setItem("username", keycloak.tokenParsed?.preferred_username || "");
+      localStorage.setItem("username", username);
+      localStorage.setItem("user_roles", JSON.stringify(roles));
+      
+      // Store complete user object for useAuth hook
+      localStorage.setItem('user', JSON.stringify({
+        username: username,
+        roles: roles,
+        email: email
+      }));
 
       // Auto-refresh token 60 seconds before expiry
       keycloak.onTokenExpired = () => {
@@ -32,10 +45,19 @@ async function initKeycloak() {
           .updateToken(60)
           .then(() => {
             localStorage.setItem("access_token", keycloak.token);
+            // Update user object with refreshed token
+            const refreshedRoles = keycloak.tokenParsed?.realm_access?.roles || [];
+            localStorage.setItem('user', JSON.stringify({
+              username: keycloak.tokenParsed?.preferred_username || username,
+              roles: refreshedRoles,
+              email: keycloak.tokenParsed?.email || email
+            }));
           })
           .catch(() => {
             localStorage.removeItem("access_token");
             localStorage.removeItem("username");
+            localStorage.removeItem("user_roles");
+            localStorage.removeItem("user");
           });
       };
     }
