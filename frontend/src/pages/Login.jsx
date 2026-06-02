@@ -2,7 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import keycloak from "../keycloak";
-import { STORAGE_KEYS } from "../config/constants";
+import { API_CONFIG, STORAGE_KEYS } from "../config/constants";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -22,8 +22,7 @@ export default function Login({ onLogin }) {
     setLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/auth/login`, {
+      const response = await fetch(`${API_CONFIG.baseURL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),

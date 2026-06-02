@@ -1,7 +1,9 @@
 from fastapi import APIRouter
+from fastapi import Response
 
 from app.models.schemas import HealthResponse
 from app.utils.config import settings
+from app.utils.metrics import metrics_response
 
 router = APIRouter(tags=["system"])
 
@@ -46,3 +48,9 @@ async def storage_status():
             "vector_dir": str(settings.vector_dir),
         },
     }
+
+
+@router.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    payload, content_type = metrics_response()
+    return Response(content=payload, media_type=content_type)

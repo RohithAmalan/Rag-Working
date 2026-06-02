@@ -40,17 +40,19 @@ export default function App({ keycloak }) {
   });
 
   const normalizeDocuments = useCallback((data) => ({
-    total_chunks: data?.total_chunks ?? data?.stats?.total_chunks ?? 0,
-    primary_chunks: data?.primary_chunks ?? data?.stats?.primary_chunks ?? 0,
-    secondary_chunks: data?.secondary_chunks ?? data?.stats?.secondary_chunks ?? 0,
+    total_chunks: data?.total_chunks ?? 0,
+    primary_chunks: data?.total_documents ?? 0, // Use total_documents as fallback
+    secondary_chunks: 0, // Backend doesn't track this separately
     documents: Array.isArray(data?.documents) ? data.documents : [],
   }), []);
 
   const loadDocuments = useCallback(async () => {
     try {
       const data = await fetchDocuments();
+      console.log("📊 Documents loaded:", data);
       setDocuments(normalizeDocuments(data));
-    } catch {
+    } catch (err) {
+      console.error("❌ Failed to load documents:", err);
       setDocuments((prev) => prev);
     }
   }, [normalizeDocuments]);

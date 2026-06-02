@@ -22,6 +22,7 @@ sentence-transformers
 python-dotenv
 minio
 faiss-cpu
+prometheus-client
 
 # Testing dependencies
 pytest
@@ -42,6 +43,6 @@ pip-audit  # PyPI package vulnerability scanner
 # Security fixes for vulnerable dependencies
 filelock>=3.20.1  # Fix CVE-2025-68146 (TOCTOU race condition)
 langsmith>=0.7.0  # Fix SSRF and data exfiltration vulnerabilities
-nltk>=3.10  # Fix arbitrary code execution vulnerabilities
+nltk==3.9.2  # pinned to avoid build resolution issues
 lxml>=6.1.0  # Fix XML entity expansion vulnerabilities
 idna>=3.12  # Fix denial of service vulnerabilities

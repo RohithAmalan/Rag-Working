@@ -8,6 +8,7 @@ from app.rag.generator import generate_answer
 from app.services.rag_service import RagService
 from app.utils.config import settings
 from app.utils.logger import get_logger
+from app.utils.metrics import observe_rag_query, observe_upload, start_timer
 from app.utils.dependencies import require_admin, require_user, get_current_user
 
 logger = get_logger(__name__)
@@ -77,6 +78,7 @@ async def upload_documents(
         Upload processing statistics
     """
     logger.info(f"Admin {current_user.get('username')} uploading {len(files)} file(s)")
+    files_count = len(files)
     
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -87,6 +89,7 @@ async def upload_documents(
         # Calculate chunk counts
         total_chunks = sum(doc.get("chunks_stored", 0) for doc in result.get("documents", []))
         
+        observe_upload(status="success", files_count=files_count)
         return {
             "message": "Files uploaded and indexed successfully",
             "processed_files": result.get("processed_files", 0),
@@ -96,9 +99,11 @@ async def upload_documents(
         }
     except ValueError as exc:
         logger.error(f"Validation error during upload: {exc}")
+        observe_upload(status="validation_error", files_count=files_count)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(f"Upload failed: {exc}")
+        observe_upload(status="error", files_count=files_count)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(exc)}") from exc
 
 
@@ -157,6 +162,8 @@ async def query_documents(
         Query response with answer and retrieved chunks
     """
     logger.info(f"User {current_user.get('username')} querying: {payload.question[:50]}...")
+    started = start_timer()
+    workflow = "classic"
     
     try:
         logger.info(f"Processing query: {payload.question[:50]}...")
@@ -171,6 +178,12 @@ async def query_documents(
 
         if not retrieved_chunks:
             logger.info("No chunks retrieved, returning empty answer")
+            observe_rag_query(
+                duration_seconds=start_timer() - started,
+                status="empty",
+                workflow=workflow,
+                retrieved_chunks=0,
+            )
             return {
                 "answer": "I don't know based on the uploaded data.",
                 "retrieved_chunks": [],
@@ -247,16 +260,40 @@ async def query_documents(
             "retrieved_chunks": formatted_chunks,
             "citations": citations,
         }
-
+        
     except ValueError as exc:
         logger.error(f"Query validation failed: {exc}")
+        observe_rag_query(
+            duration_seconds=start_timer() - started,
+            status="validation_error",
+            workflow=workflow,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         # Re-raise HTTP exceptions (ValueError, RuntimeError from Groq)
+        observe_rag_query(
+            duration_seconds=start_timer() - started,
+            status="http_error",
+            workflow=workflow,
+        )
         raise
     except Exception as exc:
         logger.error(f"Query failed: {type(exc).__name__}: {exc}", exc_info=True)
+        observe_rag_query(
+            duration_seconds=start_timer() - started,
+            status="error",
+            workflow=workflow,
+        )
         raise HTTPException(status_code=500, detail=f"Query failed: {str(exc)}") from exc
+
+    finally:
+        if 'retrieved_chunks' in locals() and 'answer' in locals():
+            observe_rag_query(
+                duration_seconds=start_timer() - started,
+                status="success",
+                workflow=workflow,
+                retrieved_chunks=len(retrieved_chunks),
+            )
 
 
 @router.post("/query-langgraph", response_model=dict[str, Any])
@@ -279,6 +316,8 @@ async def query_with_langgraph(
     Returns:
         Enhanced response with answer, chunks, citations, confidence, and workflow metadata
     """
+    started = start_timer()
+    workflow = "langgraph"
     try:
         logger.info(f"LangGraph query: {payload.question[:50]}... (file={payload.selected_file})")
         
@@ -313,10 +352,23 @@ async def query_with_langgraph(
         
     except Exception as exc:
         logger.error(f"LangGraph query failed: {type(exc).__name__}: {exc}", exc_info=True)
+        observe_rag_query(
+            duration_seconds=start_timer() - started,
+            status="error",
+            workflow=workflow,
+        )
         raise HTTPException(
             status_code=500,
             detail=f"LangGraph query failed: {str(exc)}"
         ) from exc
+    finally:
+        if 'result' in locals():
+            observe_rag_query(
+                duration_seconds=start_timer() - started,
+                status="success",
+                workflow=workflow,
+                retrieved_chunks=len(result.get("retrieved_chunks", [])),
+            )
 
 
 @router.get("/documents", response_model=dict[str, Any])
@@ -463,7 +515,7 @@ async def get_file_preview(
                 
                 # Check mounted minio-data directory first (for backward compatibility)
                 minio_data_path = Path("/app/minio-data") / storage_object
-                if minio_data_path.exists():
+                if minio_data_path.exists() and minio_data_path.is_file():
                     logger.info(f"Using file from mounted minio-data: {minio_data_path}")
                     file_path_obj = minio_data_path
                 else:
@@ -571,7 +623,7 @@ async def get_file_analytics(
                 
                 # Check mounted minio-data directory first (for backward compatibility)
                 minio_data_path = Path("/app/minio-data") / storage_object
-                if minio_data_path.exists():
+                if minio_data_path.exists() and minio_data_path.is_file():
                     logger.info(f"Using file from mounted minio-data: {minio_data_path}")
                     file_path_obj = minio_data_path
                 else:

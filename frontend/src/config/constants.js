@@ -2,7 +2,7 @@
 const ENV = import.meta.env;
 
 export const API_CONFIG = {
-  baseURL: ENV.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseURL: ENV.VITE_API_BASE_URL || 'http://localhost:8001',
   timeout: parseInt(ENV.VITE_API_TIMEOUT) || 300000, // 5 minutes for embedding model loading on first upload
 };
 

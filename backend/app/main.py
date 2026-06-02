@@ -4,7 +4,7 @@ import asyncio
 # Suppress harmless multiprocessing warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
@@ -17,6 +17,7 @@ from app.services.embedding_service import get_embedding_model
 from app.services.rag_service import RagService
 from app.utils.config import settings
 from app.utils.logger import get_logger
+from app.utils.metrics import observe_http_request, set_storage_backend, start_timer
 
 logger = get_logger(__name__)
 
@@ -79,6 +80,22 @@ app.include_router(auth_router)
 app.include_router(evaluation_router)
 
 
+@app.middleware("http")
+async def prometheus_http_middleware(request: Request, call_next):
+    started = start_timer()
+    method = request.method
+    route = request.scope.get("route")
+    endpoint = getattr(route, "path", request.url.path)
+
+    try:
+        response = await call_next(request)
+        observe_http_request(method, endpoint, response.status_code, started)
+        return response
+    except Exception:
+        observe_http_request(method, endpoint, 500, started)
+        raise
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize MongoDB and RAG service on startup."""
@@ -101,6 +118,7 @@ async def startup_event():
             faiss_service.startup()
             app.state.rag_service = faiss_service
             app.state.storage_backend = "faiss-fallback"
+            set_storage_backend("faiss-fallback")
             logger.info("FAISS fallback service initialized successfully")
             return
         raise
@@ -111,6 +129,7 @@ async def startup_event():
         rag_service = RagService(db)
         app.state.rag_service = rag_service
         app.state.storage_backend = "mongodb"
+        set_storage_backend("mongodb")
         logger.info("RAG service initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize RAG service: {e}")
