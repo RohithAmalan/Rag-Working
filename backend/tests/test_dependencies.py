@@ -20,7 +20,7 @@ async def test_get_current_user_no_token():
         await get_current_user(authorization=None)
     
     assert exc_info.value.status_code == 401
-    assert "Authorization header missing" in str(exc_info.value.detail)
+    assert "No authorization token provided" in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio
@@ -36,12 +36,12 @@ async def test_get_current_user_invalid_format():
 @patch('app.utils.dependencies.keycloak_service')
 async def test_get_current_user_keycloak_success(mock_keycloak):
     """Test get_current_user with valid Keycloak token."""
-    mock_keycloak.verify_token.return_value = {
+    mock_keycloak.verify_token = AsyncMock(return_value={
         "username": "testuser",
         "sub": "user-123",
         "email": "test@example.com",
         "roles": [Roles.USER],
-    }
+    })
     
     result = await get_current_user(authorization="Bearer valid-keycloak-token")
     
@@ -56,11 +56,8 @@ async def test_get_current_user_keycloak_success(mock_keycloak):
 @patch('app.utils.dependencies.auth_service')
 async def test_get_current_user_fallback_to_legacy(mock_auth, mock_keycloak):
     """Test get_current_user falls back to legacy auth when Keycloak fails."""
-    mock_keycloak.verify_token.side_effect = Exception("Keycloak error")
-    mock_auth.verify_token.return_value = {
-        "username": "admin",
-        "roles": [Roles.ADMIN, Roles.USER],
-    }
+    mock_keycloak.is_enabled.return_value = False
+    mock_auth.verify_token.return_value = "admin"
     
     result = await get_current_user(authorization="Bearer legacy-token")
     
@@ -128,10 +125,10 @@ async def test_require_user_success():
 async def test_get_current_user_optional_with_token():
     """Test get_current_user_optional returns user info when token present."""
     with patch('app.utils.dependencies.keycloak_service') as mock_keycloak:
-        mock_keycloak.verify_token.return_value = {
+        mock_keycloak.verify_token = AsyncMock(return_value={
             "username": "testuser",
             "roles": [Roles.USER],
-        }
+        })
         
         result = await get_current_user_optional(authorization="Bearer token")
         
@@ -151,7 +148,7 @@ async def test_get_current_user_optional_no_token():
 async def test_get_current_user_optional_invalid_token():
     """Test get_current_user_optional returns None when token invalid."""
     with patch('app.utils.dependencies.keycloak_service') as mock_keycloak:
-        mock_keycloak.verify_token.side_effect = Exception("Invalid token")
+        mock_keycloak.verify_token = AsyncMock(side_effect=Exception("Invalid token"))
         
         with patch('app.utils.dependencies.auth_service') as mock_auth:
             mock_auth.verify_token.side_effect = Exception("Invalid token")
@@ -159,3 +156,4 @@ async def test_get_current_user_optional_invalid_token():
             result = await get_current_user_optional(authorization="Bearer bad-token")
             
             assert result is None
+

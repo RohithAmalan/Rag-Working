@@ -14,43 +14,45 @@ import { TOAST_CONFIG } from "./config/constants";
  */
 async function initKeycloak() {
   try {
-    const authenticated = await keycloak.init({
-      onLoad: "check-sso",
+    // Detect whether we have returned from Keycloak with an auth response
+    // (authorization code or error). When present, initialize with
+    // `check-sso` so the adapter can process the callback and populate tokens.
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasAuthResponse = urlParams.has("code") || urlParams.has("error");
+
+    const initOptions = {
+      onLoad: hasAuthResponse ? "check-sso" : "none",
       silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
       pkceMethod: "S256",
       checkLoginIframe: false,
-    });
+    };
 
-    if (authenticated) {
+    const authenticated = await keycloak.init(initOptions);
+
+      if (authenticated) {
       // Extract user info from Keycloak token
       const username = keycloak.tokenParsed?.preferred_username || "";
       const email = keycloak.tokenParsed?.email || "";
       const roles = keycloak.tokenParsed?.realm_access?.roles || [];
-      
-      // Store Keycloak token so the existing api.js interceptor picks it up
+
+      // Persist tokens and user info so App.jsx can detect auth state
       localStorage.setItem("access_token", keycloak.token);
       localStorage.setItem("username", username);
       localStorage.setItem("user_roles", JSON.stringify(roles));
-      
-      // Store complete user object for useAuth hook
-      localStorage.setItem('user', JSON.stringify({
-        username: username,
-        roles: roles,
-        email: email
-      }));
+      localStorage.setItem("user", JSON.stringify({ username, roles, email }));
 
       // Auto-refresh token 60 seconds before expiry
       keycloak.onTokenExpired = () => {
         keycloak
           .updateToken(60)
           .then(() => {
-            localStorage.setItem("access_token", keycloak.token);
-            // Update user object with refreshed token
             const refreshedRoles = keycloak.tokenParsed?.realm_access?.roles || [];
-            localStorage.setItem('user', JSON.stringify({
+            // Update stored token with the refreshed one
+            localStorage.setItem("access_token", keycloak.token);
+            localStorage.setItem("user", JSON.stringify({
               username: keycloak.tokenParsed?.preferred_username || username,
               roles: refreshedRoles,
-              email: keycloak.tokenParsed?.email || email
+              email: keycloak.tokenParsed?.email || email,
             }));
           })
           .catch(() => {
@@ -60,6 +62,12 @@ async function initKeycloak() {
             localStorage.removeItem("user");
           });
       };
+    }
+    // If we processed an auth response from Keycloak, remove query params
+    // (clean URL) so the app doesn't try to re-process the response on reload.
+    if (hasAuthResponse) {
+      const cleanUrl = `${window.location.origin}${window.location.pathname}${window.location.hash}`;
+      window.history.replaceState(null, document.title, cleanUrl);
     }
   } catch {
     // Keycloak not reachable — continue with legacy form-based login

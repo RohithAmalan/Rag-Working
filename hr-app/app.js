@@ -35,7 +35,8 @@ function showMainApp() {
 // Login with Keycloak
 function loginWithKeycloak() {
     keycloak.login({
-        redirectUri: window.location.href
+        redirectUri: window.location.href,
+        prompt: 'login' // force explicit user auth for this client
     }).catch(error => {
         console.error('Login failed:', error);
         alert('Login failed. Please try again.');
@@ -44,7 +45,7 @@ function loginWithKeycloak() {
 
 // Initialize Keycloak
 keycloak.init({
-    onLoad: 'check-sso',  // Check if already logged in, don't force login
+    onLoad: 'none',  // Do not auto-check SSO on load — require explicit login
     checkLoginIframe: false,
     pkceMethod: 'S256'
 }).then(authenticated => {
@@ -56,6 +57,21 @@ keycloak.init({
             // Extract roles
             const roles = keycloak.tokenParsed?.realm_access?.roles || [];
             isHrAdmin = roles.includes('hr_admin');
+
+            // Enforce application-level authorization: only users with 'hr_user' or 'hr_admin' may use this app
+            const hasHrAccess = roles.includes('hr_user') || roles.includes('hr_admin');
+            if (!hasHrAccess) {
+                // Show login page with access denied message (do not log user out of Keycloak)
+                showLoginPage();
+                const errorEl = document.getElementById('loginError');
+                if (errorEl) {
+                    errorEl.textContent = 'Access denied: your account does not have permission to access the HR app.';
+                    errorEl.style.display = 'block';
+                } else {
+                    alert('Access denied: your account does not have permission to access the HR app.');
+                }
+                return;
+            }
             
             // Show main app
             showMainApp();

@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi import Response
+
+from app.utils.dependencies import require_admin
 
 from app.models.schemas import HealthResponse
 from app.utils.config import settings
@@ -14,8 +16,8 @@ async def health_check():
 
 
 @router.get("/storage-status")
-async def storage_status():
-    """Report where uploaded data is currently being stored."""
+async def storage_status(current_user: dict = Depends(require_admin)):
+    """Report where uploaded data is currently being stored. **Admin only.**"""
     from app.main import app
 
     backend = getattr(app.state, "storage_backend", "unknown")

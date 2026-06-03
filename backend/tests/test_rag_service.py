@@ -135,18 +135,29 @@ class TestRagService:
     @pytest.mark.asyncio
     async def test_search_and_retrieve(self, rag_service):
         """Test search and retrieve functionality."""
-        rag_service.langgraph_service.run = AsyncMock(return_value={
-            "answer": "Test answer",
-            "sources": [],
-        })
+        rag_service.vector_service.search_chunks = AsyncMock(return_value=[
+            {
+                "chunk_text": "mock chunk text",
+                "similarity_score": 0.99,
+                "source": "test.csv",
+                "metadata": {"source_priority": "primary"},
+            }
+        ])
 
         result = await rag_service.search_and_retrieve(
             query="test query",
             top_k=5
         )
 
-        assert "answer" in result
-        rag_service.langgraph_service.run.assert_called_once()
+        assert len(result) == 1
+        assert result[0]["chunk_text"] == "mock chunk text"
+        rag_service.vector_service.search_chunks.assert_called_once_with(
+            query_text="test query",
+            top_k=5,
+            source_priority="primary",
+            required_file_name=None,
+        )
+
 
     @pytest.mark.asyncio
     async def test_upload_multiple_files(self, rag_service):

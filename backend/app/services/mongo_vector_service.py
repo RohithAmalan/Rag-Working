@@ -846,6 +846,10 @@ class MongoVectorService:
     async def delete_document_and_chunks(self, document_id: str) -> int:
         """Delete a document and all linked chunks."""
         obj_id = ObjectId(document_id)
+        # Check if document exists first
+        doc = await self.get_document_by_id(document_id)
+        if not doc:
+            raise ValueError(f"Document with ID {document_id} not found")
         deleted_chunks = await self.chunks.delete_chunks_by_document(obj_id)
         await self.documents.delete_document(obj_id)
         return deleted_chunks

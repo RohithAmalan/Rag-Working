@@ -32,10 +32,11 @@ function showMainApp() {
     document.getElementById('app').style.display = 'flex';
 }
 
-// Login with Keycloak
+// Login with Keycloak (explicit login, do not use existing SSO session)
 function loginWithKeycloak() {
     keycloak.login({
-        redirectUri: window.location.href
+        redirectUri: window.location.href,
+        prompt: 'login'
     }).catch(error => {
         console.error('Login failed:', error);
         alert('Login failed. Please try again.');
@@ -44,7 +45,7 @@ function loginWithKeycloak() {
 
 // Initialize Keycloak
 keycloak.init({
-    onLoad: 'check-sso',  // Check if already logged in, don't force login
+    onLoad: 'none',  // Do not auto-check SSO on load — require explicit login
     checkLoginIframe: false,
     pkceMethod: 'S256'
 }).then(authenticated => {
@@ -56,6 +57,20 @@ keycloak.init({
             // Extract roles
             const roles = keycloak.tokenParsed?.realm_access?.roles || [];
             isFinanceAdmin = roles.includes('finance_admin');
+
+            // Enforce app-level authorization: require 'finance_user' or 'finance_admin'
+            const hasFinanceAccess = roles.includes('finance_user') || roles.includes('finance_admin');
+            if (!hasFinanceAccess) {
+                showLoginPage();
+                const errorEl = document.getElementById('loginError');
+                if (errorEl) {
+                    errorEl.textContent = 'Access denied: your account does not have permission to access the Finance app.';
+                    errorEl.style.display = 'block';
+                } else {
+                    alert('Access denied: your account does not have permission to access the Finance app.');
+                }
+                return;
+            }
             
             // Show main app
             showMainApp();

@@ -147,6 +147,16 @@ class TestMongoVectorService:
         db = MagicMock()
         db.chunks = MagicMock()
         db.documents = MagicMock()
+        
+        from app.utils.config import settings
+        # Mock dictionary access like db["documents"] and db["chunks"]
+        collections_map = {
+            "documents": db.documents,
+            "chunks": db.chunks,
+            settings.documents_collection: db.documents,
+            settings.chunks_collection: db.chunks
+        }
+        db.__getitem__.side_effect = lambda key: collections_map.get(key, MagicMock())
         return db
 
     @pytest.fixture
@@ -196,25 +206,28 @@ class TestMongoVectorService:
     async def test_hybrid_search(self, vector_service, mock_db):
         """Test hybrid search functionality."""
         # Mock the vector search results
-        mock_db.chunks.aggregate = AsyncMock(
+        mock_db.chunks.aggregate = MagicMock(
             return_value=MagicMock(
                 to_list=AsyncMock(
                     return_value=[
                         {
                             "_id": ObjectId(),
-                            "text": "test chunk",
+                            "chunk_text": "test chunk",
+                            "source": "test.csv",
+                            "document_id": str(ObjectId()),
+                            "chunk_index": 0,
+                            "similarity_score": 0.9,
                             "metadata": {"file_name": "test.csv"},
-                            "score": 0.9,
                         }
                     ]
                 )
             )
         )
 
-        with patch("app.services.mongo_vector_service.generate_single_embedding") as mock_embed:
+        with patch("app.services.embedding_service.generate_single_embedding") as mock_embed:
             mock_embed.return_value = [0.1, 0.2, 0.3]
 
-            results = await vector_service.hybrid_search(
+            results = await vector_service.search_chunks(
                 query_text="test query",
                 top_k=5
             )
@@ -240,7 +253,7 @@ class TestMongoVectorService:
         results = await vector_service.get_all_documents()
 
         assert len(results) > 0
-        assert isinstance(results[0]["id"], str)
+        assert isinstance(results[0]["_id"], str)
 
     @pytest.mark.asyncio
     async def test_delete_document(self, vector_service, mock_db):
@@ -257,10 +270,9 @@ class TestMongoVectorService:
             return_value=MagicMock(deleted_count=5)
         )
 
-        result = await vector_service.delete_document(doc_id)
+        result = await vector_service.delete_document_and_chunks(doc_id)
 
-        assert result["deleted"] is True
-        assert result["chunks_deleted"] == 5
+        assert result == 5
 
     @pytest.mark.asyncio
     async def test_delete_document_not_found(self, vector_service, mock_db):
@@ -270,25 +282,38 @@ class TestMongoVectorService:
         mock_db.documents.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(ValueError, match="not found"):
-            await vector_service.delete_document(doc_id)
+            await vector_service.delete_document_and_chunks(doc_id)
 
     @pytest.mark.asyncio
     async def test_search_with_file_filter(self, vector_service, mock_db):
         """Test search with file filtering."""
-        mock_db.chunks.aggregate = AsyncMock(
+        mock_db.chunks.aggregate = MagicMock(
             return_value=MagicMock(
-                to_list=AsyncMock(return_value=[])
+                to_list=AsyncMock(
+                    return_value=[
+                        {
+                            "_id": ObjectId(),
+                            "chunk_text": "test chunk",
+                            "source": "customers-100.csv",
+                            "document_id": str(ObjectId()),
+                            "chunk_index": 0,
+                            "similarity_score": 0.9,
+                            "metadata": {"file_name": "customers-100.csv"},
+                        }
+                    ]
+                )
             )
         )
 
-        with patch("app.services.mongo_vector_service.generate_single_embedding") as mock_embed:
+        with patch("app.services.embedding_service.generate_single_embedding") as mock_embed:
             mock_embed.return_value = [0.1, 0.2, 0.3]
 
             # Search with file hint
-            await vector_service.hybrid_search(
+            await vector_service.search_chunks(
                 query_text="find in customers file",
                 top_k=5
             )
 
             # Should have called embedding generation
             mock_embed.assert_called()
+

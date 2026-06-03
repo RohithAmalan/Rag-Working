@@ -54,7 +54,7 @@ class TestMinioService:
 
         assert service.enabled is False
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_init_client_success(self, mock_minio_class, mock_settings_enabled):
         """Test successful MinIO client initialization."""
         mock_client = Mock()
@@ -67,7 +67,7 @@ class TestMinioService:
         assert service._client == mock_client
         mock_client.bucket_exists.assert_called_once_with("test-bucket")
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_init_client_creates_bucket(self, mock_minio_class, mock_settings_enabled):
         """Test bucket creation when it doesn't exist."""
         mock_client = Mock()
@@ -79,7 +79,7 @@ class TestMinioService:
         assert service.enabled is True
         mock_client.make_bucket.assert_called_once_with("test-bucket")
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_init_client_failure(self, mock_minio_class, mock_settings_enabled):
         """Test fallback to local storage when MinIO init fails."""
         mock_minio_class.side_effect = Exception("Connection failed")
@@ -102,7 +102,7 @@ class TestMinioService:
         assert result["storage_bucket"] == ""
         assert result["storage_object"] == ""
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_upload_file_success(self, mock_minio_class, mock_settings_enabled, tmp_path):
         """Test successful file upload to MinIO."""
         mock_client = Mock()
@@ -122,7 +122,7 @@ class TestMinioService:
         assert result["storage_path"].startswith("s3://")
         mock_client.fput_object.assert_called_once()
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_upload_file_minio_failure_fallback(self, mock_minio_class, mock_settings_enabled, tmp_path):
         """Test fallback to local when MinIO upload fails."""
         mock_client = Mock()
@@ -139,7 +139,7 @@ class TestMinioService:
         assert result["storage_backend"] == "local"
         assert result["storage_path"] == str(test_file)
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_upload_file_lazy_reconnect(self, mock_minio_class, mock_settings_enabled, tmp_path):
         """Test lazy reconnection when MinIO becomes available."""
         # First call fails
@@ -169,11 +169,11 @@ class TestMinioService:
 
     def test_bucket_property(self, mock_settings_enabled):
         """Test bucket property is correctly set."""
-        with patch("app.services.minio_service.Minio"):
+        with patch("minio.Minio"):
             service = MinioService()
             assert service.bucket == "test-bucket"
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_upload_file_generates_unique_object_names(self, mock_minio_class, mock_settings_enabled, tmp_path):
         """Test that uploaded objects get unique names."""
         mock_client = Mock()
@@ -190,7 +190,7 @@ class TestMinioService:
         # Object names should be different (contain UUIDs)
         assert result1["storage_object"] != result2["storage_object"]
 
-    @patch("app.services.minio_service.Minio")
+    @patch("minio.Minio")
     def test_minio_secure_setting(self, mock_minio_class, mock_settings_enabled):
         """Test that secure setting is passed to MinIO client."""
         mock_client = Mock()

@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Response
 from typing import Optional
 from jose import jwt as jose_jwt
 
@@ -39,7 +39,7 @@ def _revoke_keycloak_access_token(token: str) -> None:
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, response: Response):
     """
     Login endpoint.
 
@@ -50,6 +50,8 @@ async def login(request: LoginRequest):
     - admin / admin123
     - demo / demo123
     - user / user123
+    
+    Refresh token is set as an HttpOnly, Secure, SameSite cookie for secure refresh flows.
     """
     logger.info(f"Login attempt for user: {request.username}")
 
@@ -63,10 +65,21 @@ async def login(request: LoginRequest):
         user_info = await keycloak_service.verify_token(tokens["access_token"])
         roles = user_info.get("roles", []) if user_info else []
         
+        # Set refresh token as HttpOnly cookie (secure token storage)
+        if tokens.get("refresh_token"):
+            response.set_cookie(
+                key="refresh_token",
+                value=tokens["refresh_token"],
+                httponly=True,
+                secure=True,  # Only send over HTTPS in production
+                samesite="lax",
+                max_age=86400 * 7,  # 7 days
+            )
+        
         logger.info(f"User {request.username} authenticated via Keycloak with roles: {roles}")
         return LoginResponse(
             access_token=tokens["access_token"],
-            refresh_token=tokens.get("refresh_token"),
+            refresh_token=None,  # Don't expose refresh token in body; it's in the cookie
             token_type="bearer",
             username=request.username,
             roles=roles,

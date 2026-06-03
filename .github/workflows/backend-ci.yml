@@ -91,9 +91,9 @@ jobs:
       - name: Check code formatting with black
         working-directory: ./backend
         run: |
-          black --check app tests || true
+          black --check app tests
       
       - name: Check import sorting with isort
         working-directory: ./backend
         run: |
-          isort --check-only app tests || true
+          isort --check-only app tests

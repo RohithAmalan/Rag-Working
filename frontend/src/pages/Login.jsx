@@ -67,14 +67,15 @@ export default function Login({ onLogin }) {
       // In case startup silent init failed, initialize on-demand before redirect.
       if (!keycloak.didInitialize) {
         await keycloak.init({
-          onLoad: "check-sso",
+          onLoad: "none",
           pkceMethod: "S256",
           checkLoginIframe: false,
           silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
         });
       }
 
-      await keycloak.login({ redirectUri: `${window.location.origin}/login` });
+      // Force explicit authentication for this client (do not silently reuse an existing SSO session)
+      await keycloak.login({ redirectUri: `${window.location.origin}/login`, prompt: 'login' });
     } catch (error) {
       console.error("Keycloak SSO login failed", error);
       toast.error("Could not start Keycloak login. Please try again.");

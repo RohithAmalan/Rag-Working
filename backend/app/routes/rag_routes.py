@@ -300,6 +300,7 @@ async def query_documents(
 async def query_with_langgraph(
     payload: QueryRequest,
     rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_user),  # Authenticated users only
 ):
     """Query documents using LangGraph orchestrated workflow (Phase 1).
     
@@ -462,6 +463,7 @@ async def get_file_preview(
     page_size: int = 100,
     sheet_name: str | None = None,
     rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_user),  # Authenticated users only
 ):
     """Get paginated preview of file data for dashboard display.
     
@@ -578,6 +580,7 @@ async def get_file_analytics(
     file_name: str,
     sheet_name: str | None = None,
     rag_service: RagService = Depends(get_rag_service),
+    current_user: dict = Depends(require_user),  # Authenticated users only
 ):
     """Get analytics and statistics for charts/graphs visualization.
     

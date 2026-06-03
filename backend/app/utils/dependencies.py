@@ -1,7 +1,7 @@
 """FastAPI dependencies for authentication and authorization."""
 
 import logging
-from typing import Optional
+from typing import Optional, List
 from fastapi import Header, HTTPException, Depends
 
 from app.services import auth_service
@@ -49,8 +49,50 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
         "username": username,
         "sub": username,
         "email": "",
-        "roles": roles
+        "roles": roles,
     }
+
+
+async def require_role(required_role: str, user: dict = Depends(get_current_user)) -> dict:
+    """
+    Dependency to check if user has a specific role.
+    
+    Args:
+        required_role: The role required (e.g., Roles.ADMIN)
+        user: Current authenticated user (auto-injected)
+        
+    Returns:
+        dict: User info if authorized
+        
+    Raises:
+        HTTPException: 403 if user lacks the required role
+    """
+    user_roles = user.get("roles", [])
+    if required_role not in user_roles:
+        logger.warning(f"User {user.get('username')} denied: requires {required_role}, has {user_roles}")
+        raise HTTPException(status_code=403, detail=f"Access denied: requires {required_role} role")
+    return user
+
+
+async def require_any_role(required_roles: List[str], user: dict = Depends(get_current_user)) -> dict:
+    """
+    Dependency to check if user has any of the required roles.
+    
+    Args:
+        required_roles: List of roles (user needs at least one)
+        user: Current authenticated user (auto-injected)
+        
+    Returns:
+        dict: User info if authorized
+        
+    Raises:
+        HTTPException: 403 if user lacks all required roles
+    """
+    user_roles = user.get("roles", [])
+    if not any(role in user_roles for role in required_roles):
+        logger.warning(f"User {user.get('username')} denied: requires one of {required_roles}, has {user_roles}")
+        raise HTTPException(status_code=403, detail=f"Access denied: requires one of {required_roles} roles")
+    return user
 
 
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
@@ -105,22 +147,28 @@ async def get_current_user_optional(authorization: Optional[str] = Header(None))
     if not authorization or not authorization.startswith("Bearer "):
         return None
     
-    try:
-        token = authorization.replace("Bearer ", "")
-        
-        if keycloak_service.is_enabled():
-            return await keycloak_service.verify_token(token)
-        
-        username = auth_service.verify_token(token)
-        if username:
-            roles = ["admin", "user"] if username == "admin" else ["user"]
-            return {
-                "username": username,
-                "sub": username,
-                "email": "",
-                "roles": roles
-            }
-    except Exception as e:
-        logger.debug(f"Optional auth failed: {e}")
+    token = authorization.replace("Bearer ", "")
     
-    return None
+    # Keycloak path
+    if keycloak_service.is_enabled():
+        user_info = await keycloak_service.verify_token(token)
+        return user_info
+    
+    # Legacy path
+    username = auth_service.verify_token(token)
+    if not username:
+        return None
+    
+    # For legacy auth, assign default roles based on username
+    roles = []
+    if username == "admin":
+        roles = [Roles.ADMIN, Roles.USER]
+    else:
+        roles = [Roles.USER]
+    
+    return {
+        "username": username,
+        "sub": username,
+        "email": "",
+        "roles": roles,
+    }

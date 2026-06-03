@@ -1,5 +1,6 @@
 import axios from "axios";
 import { API_CONFIG, STORAGE_KEYS } from "../config/constants";
+import keycloak from "../keycloak";
 
 const api = axios.create({
   baseURL: API_CONFIG.baseURL,
@@ -9,7 +10,11 @@ const api = axios.create({
 // Add auth token to all requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    // Prefer Keycloak in-memory token (if client is using Keycloak SSO in this app).
+    // Fallback to stored access token in localStorage for legacy / form-based login flows.
+    const kcToken = keycloak?.token;
+    const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const token = kcToken || storedToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

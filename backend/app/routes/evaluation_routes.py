@@ -2,10 +2,12 @@
 
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from app.rag.evaluator import get_evaluator
+from app.utils.dependencies import require_any_role
+from app.utils.constants import Roles
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +36,12 @@ class BatchEvaluationRequest(BaseModel):
 
 
 @router.post("/evaluate-query")
-async def evaluate_query(request: EvaluationRequest):
+async def evaluate_query(
+    request: EvaluationRequest,
+    current_user: dict = Depends(require_any_role([Roles.ADMIN, Roles.USER, "rag_admin", "rag_user"]))
+):
     """
-    Evaluate a single query-answer pair.
+    Evaluate a single query-answer pair (requires authentication).
     
     Returns RAGAS metrics:
     - answer_relevancy: How relevant is the answer to the question?
@@ -66,7 +71,10 @@ async def evaluate_query(request: EvaluationRequest):
 
 
 @router.post("/evaluate-batch")
-async def evaluate_batch(request: BatchEvaluationRequest):
+async def evaluate_batch(
+    request: BatchEvaluationRequest,
+    current_user: dict = Depends(require_any_role([Roles.ADMIN, Roles.USER, "rag_admin", "rag_user"]))
+):
     """
     Evaluate multiple query-answer pairs in batch.
     
