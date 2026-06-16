@@ -31,7 +31,12 @@ async function initKeycloak() {
 
       if (authenticated) {
       // Extract user info from Keycloak token
-      const username = keycloak.tokenParsed?.preferred_username || "";
+      const username =
+        keycloak.tokenParsed?.preferred_username ||
+        keycloak.tokenParsed?.name ||
+        keycloak.tokenParsed?.email ||
+        keycloak.tokenParsed?.sub ||
+        "User";
       const email = keycloak.tokenParsed?.email || "";
       const roles = keycloak.tokenParsed?.realm_access?.roles || [];
 

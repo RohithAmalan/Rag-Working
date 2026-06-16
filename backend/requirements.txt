@@ -23,6 +23,7 @@ python-dotenv
 minio
 faiss-cpu
 prometheus-client
+watchdog
 
 # Testing dependencies
 pytest

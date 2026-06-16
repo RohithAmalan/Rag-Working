@@ -80,10 +80,20 @@ export default function App({ keycloak }) {
     const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     const storedUsername = localStorage.getItem(STORAGE_KEYS.USERNAME);
     const storedRoles = localStorage.getItem(STORAGE_KEYS.USER_ROLES);
+    const storedUser = localStorage.getItem("user");
     
-    if (token && storedUsername) {
+    if (token) {
       setIsAuthenticated(true);
-      setUsername(storedUsername);
+      let resolvedUsername = storedUsername || "";
+      if (!resolvedUsername && storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          resolvedUsername = parsedUser?.username || parsedUser?.email || "User";
+        } catch {
+          resolvedUsername = "User";
+        }
+      }
+      setUsername(resolvedUsername || "User");
       // Load stored roles
       try {
         setUserRoles(storedRoles ? JSON.parse(storedRoles) : []);
@@ -101,11 +111,12 @@ export default function App({ keycloak }) {
     loadDocuments();
     loadStorageStatus();
 
-    // Auto-refresh disabled - user can manually refresh using the button
-    // Prevents annoying page refreshes while working
-    
-    // Cleanup function (no interval to clear)
-    return () => {};
+    const intervalId = window.setInterval(() => {
+      loadDocuments();
+      loadStorageStatus();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
   }, [isAuthenticated, loadDocuments, loadStorageStatus]);
 
   const handleUpload = async () => {

@@ -1,0 +1,187 @@
+{
+  "id": "3",
+  "name": "03 - Error Alert & Audit Logger",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag-event",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook: Receive RAG Event",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "rag-event-receiver"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming event payload\nconst body = $input.item.json.body ?? $input.item.json;\n\nconst event    = body.event    ?? 'unknown_event';\nconst severity = body.severity ?? 'info';\nconst username = body.username ?? 'system';\nconst details  = body.details  ?? {};\n\nconst score = severity === 'critical' ? 3\n            : severity === 'warning'  ? 2\n            : 1;\n\nreturn [{ json: {\n  event,\n  severity,\n  username,\n  details: JSON.stringify(details),\n  enriched_at: new Date().toISOString(),\n  source: 'n8n-workflow-03',\n  severity_score: score\n}}];"
+      },
+      "id": "node-enrich",
+      "name": "Code: Enrich Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/audit/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event: $json.event, severity: $json.severity, username: $json.username, details: $json.details, source: $json.source, enriched_at: $json.enriched_at }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "node-log",
+      "name": "POST: Audit Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-critical",
+              "leftValue": "={{ $('Code: Enrich Event').item.json.severity_score }}",
+              "rightValue": 2,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "node-if",
+      "name": "IF: Warning or Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $('Code: Enrich Event').item.json;\nconst emoji = e.severity === 'critical' ? '🚨' : '⚠️';\nreturn [{ json: {\n  alert_type: e.event.toUpperCase(),\n  message: `${emoji} RAG ALERT [${e.severity.toUpperCase()}] | Event: ${e.event} | User: ${e.username} | ${e.enriched_at}`,\n  event: e.event,\n  severity: e.severity,\n  username: e.username,\n  timestamp: e.enriched_at\n}}];"
+      },
+      "id": "node-format-alert",
+      "name": "Code: Format Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/audit/alert",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ alert_type: $json.alert_type, message: $json.message, event: $json.event, severity: $json.severity, username: $json.username, timestamp: $json.timestamp }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "node-post-alert",
+      "name": "POST: Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 180]
+    },
+    {
+      "parameters": {
+        "fromEmail": "rohithamalan1974@gmail.com",
+        "toEmail": "rohithamalan1974@gmail.com",
+        "subject": "={{ $('Code: Format Alert').item.json.alert_type }} - RAG System Alert",
+        "emailType": "html",
+        "html": "={{ `<h2>🚨 RAG System Alert</h2><p><b>Event:</b> ${$('Code: Format Alert').item.json.event}</p><p><b>Severity:</b> <span style=\"color: red; font-weight: bold;\">${$('Code: Format Alert').item.json.severity.toUpperCase()}</span></p><p><b>User:</b> ${$('Code: Format Alert').item.json.username}</p><p><b>Time:</b> ${$('Code: Format Alert').item.json.timestamp}</p><br><p>This alert was generated automatically by the RAG backend.</p>` }}",
+        "options": {}
+      },
+      "id": "node-email-alert",
+      "name": "Send Emergency Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1680, 180],
+      "credentials": {
+        "smtp": {
+          "id": "vdyH7PNmJyJOtERZ",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true, status: 'alert_logged_and_emailed', event: $('Code: Enrich Event').item.json.event, severity: $('Code: Enrich Event').item.json.severity, logged_at: $('Code: Enrich Event').item.json.enriched_at }) }}",
+        "options": {}
+      },
+      "id": "node-respond-alert",
+      "name": "Respond: Alert Logged",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1920, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true, status: 'info_logged', event: $('Code: Enrich Event').item.json.event, logged_at: $('Code: Enrich Event').item.json.enriched_at }) }}",
+        "options": {}
+      },
+      "id": "node-respond-info",
+      "name": "Respond: Info Logged",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 450]
+    }
+  ],
+  "connections": {
+    "Webhook: Receive RAG Event": {
+      "main": [[{ "node": "Code: Enrich Event", "type": "main", "index": 0 }]]
+    },
+    "Code: Enrich Event": {
+      "main": [[{ "node": "POST: Audit Log", "type": "main", "index": 0 }]]
+    },
+    "POST: Audit Log": {
+      "main": [[{ "node": "IF: Warning or Critical?", "type": "main", "index": 0 }]]
+    },
+    "IF: Warning or Critical?": {
+      "main": [
+        [{ "node": "Code: Format Alert", "type": "main", "index": 0 }],
+        [{ "node": "Respond: Info Logged", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Format Alert": {
+      "main": [[{ "node": "POST: Send Alert", "type": "main", "index": 0 }]]
+    },
+    "POST: Send Alert": {
+      "main": [[{ "node": "Send Emergency Email", "type": "main", "index": 0 }]]
+    },
+    "Send Emergency Email": {
+      "main": [[{ "node": "Respond: Alert Logged", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

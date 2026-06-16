@@ -1,0 +1,220 @@
+{
+  "id": "2",
+  "name": "02 - Scheduled RAG Health & Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron: Daily 9am (Weekdays)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "trigger-report",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Manual Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 150],
+      "webhookId": "manual-report-trigger"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://rag-backend:8000/health",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "health-check",
+      "name": "FastAPI: Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"username\":\"admin\",\"password\":\"admin123\"}",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "id": "login-node",
+      "name": "FastAPI: Get Admin Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://rag-backend:8000/documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "list-docs",
+      "name": "FastAPI: List All Documents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://rag-backend:8000/audit/events?limit=5",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "fetch-audit",
+      "name": "FastAPI: Get Recent Audit Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 480]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://rag-backend:8000/audit/alerts?limit=3",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "fetch-alerts",
+      "name": "FastAPI: Get Recent Alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 640]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Gather all upstream data ────────────────────────────────────────────────\nconst health   = $('FastAPI: Health Check').item.json;\nconst docsData = $('FastAPI: List All Documents').item.json;\nconst auditData= $('FastAPI: Get Recent Audit Events').item.json;\nconst alertData= $('FastAPI: Get Recent Alerts').item.json;\n\nconst now      = new Date();\nconst dateStr  = now.toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric', timeZone:'Asia/Kolkata' });\nconst timeStr  = now.toLocaleTimeString('en-IN', { timeZone:'Asia/Kolkata', hour12:true });\n\n// ── Documents summary ───────────────────────────────────────────────────────\nconst docs        = docsData.documents || [];\nconst totalDocs   = docsData.total_documents || docs.length || 0;\nconst totalChunks = docsData.total_chunks || 0;\n\nconst docRows = docs.length > 0\n  ? docs.slice(0, 10).map((d, i) =>\n      `<tr style=\"background:${i%2===0?'#f9f9f9':'#fff'}\">\n        <td style=\"padding:8px 12px;border-bottom:1px solid #eee\">${d.file_name || d.filename || 'Unknown'}</td>\n        <td style=\"padding:8px 12px;border-bottom:1px solid #eee;text-align:center\">${d.chunk_count || d.chunks || 0}</td>\n        <td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#888;font-size:12px\">${new Date(d.uploaded_at || Date.now()).toLocaleDateString('en-IN')}</td>\n      </tr>`).join('')\n  : '<tr><td colspan=\"3\" style=\"padding:12px;text-align:center;color:#888\">No documents found</td></tr>';\n\n// ── Recent events summary ────────────────────────────────────────────────────\nconst events     = auditData.events || [];\nconst alerts     = alertData.alerts || [];\nconst alertCount = alerts.length;\n\nconst eventRows = events.length > 0\n  ? events.map(e => {\n      const color = e.severity==='critical'?'#dc2626': e.severity==='warning'?'#d97706':'#16a34a';\n      return `<tr>\n        <td style=\"padding:6px 12px;border-bottom:1px solid #f0f0f0;font-size:13px\">${e.event || ''}</td>\n        <td style=\"padding:6px 12px;border-bottom:1px solid #f0f0f0\">\n          <span style=\"background:${color};color:#fff;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600\">${(e.severity||'info').toUpperCase()}</span>\n        </td>\n        <td style=\"padding:6px 12px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#888\">${e.username || 'system'}</td>\n      </tr>`;\n    }).join('')\n  : '<tr><td colspan=\"3\" style=\"padding:12px;text-align:center;color:#888\">No recent events</td></tr>';\n\n// ── Status badge ─────────────────────────────────────────────────────────────\nconst isHealthy  = (health.status === 'ok');\nconst statusColor= isHealthy ? '#16a34a' : '#dc2626';\nconst statusText = isHealthy ? '✅ All Systems Operational' : '🚨 Backend Issue Detected';\n\n// ── Build HTML email ────────────────────────────────────────────────────────\nconst html = `\n<!DOCTYPE html>\n<html>\n<head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f3f4f6\">\n\n<div style=\"max-width:640px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)\">\n  \n  <!-- Header -->\n  <div style=\"background:linear-gradient(135deg,#1e40af,#7c3aed);padding:32px;text-align:center\">\n    <div style=\"font-size:36px;margin-bottom:8px\">🤖</div>\n    <h1 style=\"color:#fff;margin:0;font-size:22px;font-weight:700\">RAG System Daily Report</h1>\n    <p style=\"color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px\">${dateStr} &bull; ${timeStr} IST</p>\n  </div>\n\n  <!-- Status Banner -->\n  <div style=\"background:${isHealthy?'#f0fdf4':'#fef2f2'};border-left:4px solid ${statusColor};padding:14px 24px;display:flex;align-items:center\">\n    <span style=\"font-size:15px;font-weight:600;color:${statusColor}\">${statusText}</span>\n  </div>\n\n  <!-- Stats Cards -->\n  <div style=\"padding:24px;display:flex;gap:16px\">\n    <div style=\"flex:1;background:#eff6ff;border-radius:12px;padding:20px;text-align:center\">\n      <div style=\"font-size:32px;font-weight:800;color:#1e40af\">${totalDocs}</div>\n      <div style=\"font-size:13px;color:#3b82f6;margin-top:4px\">Total Documents</div>\n    </div>\n    <div style=\"flex:1;background:#f0fdf4;border-radius:12px;padding:20px;text-align:center\">\n      <div style=\"font-size:32px;font-weight:800;color:#16a34a\">${totalChunks}</div>\n      <div style=\"font-size:13px;color:#22c55e;margin-top:4px\">AI Knowledge Chunks</div>\n    </div>\n    <div style=\"flex:1;background:${alertCount>0?'#fef2f2':'#fafafa'};border-radius:12px;padding:20px;text-align:center\">\n      <div style=\"font-size:32px;font-weight:800;color:${alertCount>0?'#dc2626':'#374151'}\">${alertCount}</div>\n      <div style=\"font-size:13px;color:${alertCount>0?'#ef4444':'#6b7280'};margin-top:4px\">Active Alerts</div>\n    </div>\n  </div>\n\n  <!-- Documents Table -->\n  <div style=\"padding:0 24px 24px\">\n    <h2 style=\"font-size:16px;font-weight:700;color:#111;margin:0 0 12px\">📄 Documents in Knowledge Base</h2>\n    <table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden\">\n      <thead>\n        <tr style=\"background:#f1f5f9\">\n          <th style=\"padding:10px 12px;text-align:left;font-size:13px;color:#374151\">File Name</th>\n          <th style=\"padding:10px 12px;text-align:center;font-size:13px;color:#374151\">Chunks</th>\n          <th style=\"padding:10px 12px;text-align:left;font-size:13px;color:#374151\">Uploaded</th>\n        </tr>\n      </thead>\n      <tbody>${docRows}</tbody>\n    </table>\n  </div>\n\n  <!-- Recent Events -->\n  <div style=\"padding:0 24px 24px\">\n    <h2 style=\"font-size:16px;font-weight:700;color:#111;margin:0 0 12px\">🔍 Recent System Events</h2>\n    <table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden\">\n      <thead>\n        <tr style=\"background:#f1f5f9\">\n          <th style=\"padding:10px 12px;text-align:left;font-size:13px;color:#374151\">Event</th>\n          <th style=\"padding:10px 12px;text-align:left;font-size:13px;color:#374151\">Severity</th>\n          <th style=\"padding:10px 12px;text-align:left;font-size:13px;color:#374151\">User</th>\n        </tr>\n      </thead>\n      <tbody>${eventRows}</tbody>\n    </table>\n  </div>\n\n  <!-- Footer -->\n  <div style=\"background:#f8fafc;padding:20px 24px;text-align:center;border-top:1px solid #e5e7eb\">\n    <p style=\"margin:0;font-size:12px;color:#9ca3af\">This report was generated automatically by <strong>n8n Workflow 02</strong> &bull; RAG System &bull; Rohith Amalan</p>\n    <p style=\"margin:6px 0 0;font-size:11px;color:#9ca3af\">Next report: Tomorrow 9:00 AM IST</p>\n  </div>\n\n</div>\n</body>\n</html>`;\n\nreturn [{ json: {\n  subject: `📊 RAG Daily Report — ${totalDocs} docs, ${totalChunks} chunks | ${isHealthy?'✅ Healthy':'🚨 Issue Detected'} | ${dateStr}`,\n  html,\n  generated_at: now.toISOString(),\n  backend_status: health.status || 'unknown',\n  total_documents: totalDocs,\n  total_chunks: totalChunks,\n  alert_count: alertCount,\n  source: 'n8n-workflow-02'\n}}];"
+      },
+      "id": "build-report",
+      "name": "Code: Build HTML Email Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/audit/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event: 'daily_report_generated', severity: 'info', username: 'n8n-scheduler', details: { total_documents: $json.total_documents, total_chunks: $json.total_chunks, alert_count: $json.alert_count }, source: 'n8n-workflow-02', enriched_at: $json.generated_at }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "save-report-log",
+      "name": "FastAPI: Log Report to Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "rohithamalan1974@gmail.com",
+        "toEmail": "rohithamalan1974@gmail.com",
+        "subject": "={{ $('Code: Build HTML Email Report').item.json.subject }}",
+        "emailType": "html",
+        "html": "={{ $('Code: Build HTML Email Report').item.json.html }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email: Daily RAG Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1440, 480],
+      "credentials": {
+        "smtp": {
+          "id": "vdyH7PNmJyJOtERZ",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron: Daily 9am (Weekdays)": {
+      "main": [[{ "node": "FastAPI: Health Check", "type": "main", "index": 0 }]]
+    },
+    "Webhook: Manual Trigger": {
+      "main": [[{ "node": "FastAPI: Health Check", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: Health Check": {
+      "main": [[{ "node": "FastAPI: Get Admin Token", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: Get Admin Token": {
+      "main": [[{ "node": "FastAPI: List All Documents", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: List All Documents": {
+      "main": [[{ "node": "FastAPI: Get Recent Audit Events", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: Get Recent Audit Events": {
+      "main": [[{ "node": "FastAPI: Get Recent Alerts", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: Get Recent Alerts": {
+      "main": [[{ "node": "Code: Build HTML Email Report", "type": "main", "index": 0 }]]
+    },
+    "Code: Build HTML Email Report": {
+      "main": [
+        [{ "node": "FastAPI: Log Report to Audit", "type": "main", "index": 0 }],
+        [{ "node": "Send Email: Daily RAG Report", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  }
+}

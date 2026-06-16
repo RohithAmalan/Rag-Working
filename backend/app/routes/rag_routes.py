@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from app.models.schemas import DocumentsResponse, QueryRequest, QueryResponse, SourceItem, RetrievedChunk
 from app.rag.generator import generate_answer
 from app.services.rag_service import RagService
+from app.services.n8n_service import notify_n8n_event
 from app.utils.config import settings
 from app.utils.logger import get_logger
 from app.utils.metrics import observe_rag_query, observe_upload, start_timer
@@ -81,6 +82,12 @@ async def upload_documents(
     files_count = len(files)
     
     if not files:
+        await notify_n8n_event(
+            event="upload_error",
+            severity="warning",
+            username=current_user.get("username", "unknown"),
+            details={"reason": "no_files_provided"},
+        )
         raise HTTPException(status_code=400, detail="No files provided")
 
     try:
@@ -100,10 +107,22 @@ async def upload_documents(
     except ValueError as exc:
         logger.error(f"Validation error during upload: {exc}")
         observe_upload(status="validation_error", files_count=files_count)
+        await notify_n8n_event(
+            event="upload_error",
+            severity="critical",
+            username=current_user.get("username", "unknown"),
+            details={"reason": "validation_error", "error": str(exc)},
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(f"Upload failed: {exc}")
         observe_upload(status="error", files_count=files_count)
+        await notify_n8n_event(
+            event="upload_error",
+            severity="critical",
+            username=current_user.get("username", "unknown"),
+            details={"reason": "upload_failed", "error": str(exc)},
+        )
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(exc)}") from exc
 
 

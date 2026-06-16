@@ -12,6 +12,7 @@ from app.routes.rag_routes import router as rag_router
 from app.routes.system_routes import router as system_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.evaluation_routes import router as evaluation_router
+from app.routes.audit_routes import router as audit_router
 from app.services.faiss_rag_service import FaissRagService
 from app.services.embedding_service import get_embedding_model
 from app.services.rag_service import RagService
@@ -78,6 +79,7 @@ app.include_router(system_router)
 app.include_router(rag_router)
 app.include_router(auth_router)
 app.include_router(evaluation_router)
+app.include_router(audit_router)
 
 
 @app.middleware("http")

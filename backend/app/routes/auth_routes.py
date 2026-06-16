@@ -8,6 +8,7 @@ from jose import jwt as jose_jwt
 
 from app.models.auth import LoginRequest, LoginResponse, User
 from app.services import auth_service
+from app.services.n8n_service import notify_n8n_event
 from app.services.keycloak_service import keycloak_service
 from app.utils.constants import Roles, APIMessages
 
@@ -59,6 +60,12 @@ async def login(request: LoginRequest, response: Response):
         tokens = await keycloak_service.exchange_credentials(request.username, request.password)
         if not tokens:
             logger.warning(f"Keycloak login failed for user: {request.username}")
+            await notify_n8n_event(
+                event="login_failure",
+                severity="warning",
+                username=request.username,
+                details={"auth_mode": "keycloak", "reason": "invalid_credentials"},
+            )
             raise HTTPException(status_code=401, detail="Invalid username or password")
 
         # Extract roles from the access token
@@ -77,6 +84,12 @@ async def login(request: LoginRequest, response: Response):
             )
         
         logger.info(f"User {request.username} authenticated via Keycloak with roles: {roles}")
+        await notify_n8n_event(
+            event="login_success",
+            severity="info",
+            username=request.username,
+            details={"auth_mode": "keycloak", "roles": roles},
+        )
         return LoginResponse(
             access_token=tokens["access_token"],
             refresh_token=None,  # Don't expose refresh token in body; it's in the cookie
@@ -89,6 +102,12 @@ async def login(request: LoginRequest, response: Response):
     # --- Legacy in-memory auth (no Keycloak) ---
     if not auth_service.authenticate_user(request.username, request.password):
         logger.warning(f"Failed login attempt for user: {request.username}")
+        await notify_n8n_event(
+            event="login_failure",
+            severity="warning",
+            username=request.username,
+            details={"auth_mode": "legacy", "reason": "invalid_credentials"},
+        )
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     # Assign default roles for legacy auth
@@ -96,6 +115,12 @@ async def login(request: LoginRequest, response: Response):
     
     access_token = auth_service.create_access_token(request.username)
     logger.info(f"User {request.username} logged in via legacy auth with roles: {roles}")
+    await notify_n8n_event(
+        event="login_success",
+        severity="info",
+        username=request.username,
+        details={"auth_mode": "legacy", "roles": roles},
+    )
     return LoginResponse(
         access_token=access_token,
         token_type="bearer",

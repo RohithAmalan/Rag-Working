@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     keycloak_realm: str = Field(default="rag-realm", validation_alias="KEYCLOAK_REALM")
     keycloak_client_id: str = Field(default="rag-app", validation_alias="KEYCLOAK_CLIENT_ID")
 
+    # n8n Workflow Automation
+    n8n_webhook_url: str = Field(
+        default="http://localhost:5678/webhook/rag-event",
+        validation_alias="N8N_WEBHOOK_URL",
+    )
+
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
         env_file_encoding="utf-8",

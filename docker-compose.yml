@@ -144,6 +144,7 @@ services:
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-rag-realm}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rag-app}
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/rag-event
     volumes:
       - backend_uploads:/app/uploads
       - backend_vectorstore:/app/vectorstore
@@ -214,6 +215,7 @@ services:
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-rag-realm}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rag-app}
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/rag-event
     volumes:
       - ./backend:/app  # Hot reload for development
       - backend_uploads:/app/uploads
@@ -239,7 +241,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001}
     container_name: rag-frontend
     restart: unless-stopped
     ports:
@@ -270,6 +272,8 @@ services:
       - ./frontend:/app
       - /app/node_modules
     command: npm run dev -- --host 0.0.0.0
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8002}
     depends_on:
       - backend-dev
     networks:
@@ -322,6 +326,62 @@ services:
       - dev
       - default
 
+  # n8n - Visual Workflow Automation
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: rag-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    entrypoint: ["n8n", "start"]
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - N8N_SECURE_COOKIE=false
+      # Disable user management so no login screen blocks access (dev mode)
+      - N8N_USER_MANAGEMENT_DISABLED=true
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./inbox:/home/node/.n8n-files
+    networks:
+      - rag-network
+    depends_on:
+      - mongodb
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz | grep -q ok || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Inbox watcher - automatic file drop ingestion trigger
+  inbox-watcher:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rag-inbox-watcher
+    restart: unless-stopped
+    command: python /workspace/watch_inbox.py
+    environment:
+      INBOX_PATH: /workspace/inbox
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/ingest-document
+    volumes:
+      - ./:/workspace
+    depends_on:
+      n8n:
+        condition: service_started
+    networks:
+      - rag-network
+    profiles:
+      - prod
+      - dev
+      - default
+
 volumes:
   mongodb_data:
     driver: local
@@ -338,6 +398,8 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  n8n_data:
     driver: local
 
 networks:
