@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from app.models.schemas import DocumentsResponse, QueryRequest, QueryResponse, SourceItem, RetrievedChunk
 from app.rag.generator import generate_answer
 from app.services.rag_service import RagService
+from app.services.semantic_cache_service import SemanticCacheService
 from app.services.n8n_service import notify_n8n_event
 from app.utils.config import settings
 from app.utils.logger import get_logger
@@ -29,6 +30,12 @@ def get_rag_service() -> RagService:
             ),
         )
     return app.state.rag_service
+
+
+def get_semantic_cache() -> SemanticCacheService | None:
+    """Get semantic cache from app state (may be None if Redis is unavailable)."""
+    from app.main import app
+    return getattr(app.state, "semantic_cache", None)
 
 
 @router.post(
@@ -169,6 +176,7 @@ async def query_documents(
     payload: QueryRequest,
     rag_service: RagService = Depends(get_rag_service),
     current_user: dict = Depends(require_user),  # Authenticated users only
+    cache: SemanticCacheService | None = Depends(get_semantic_cache),
 ):
     """Query uploaded documents with semantic search and LLM response. **Requires authentication.**
 
@@ -183,10 +191,18 @@ async def query_documents(
     logger.info(f"User {current_user.get('username')} querying: {payload.question[:50]}...")
     started = start_timer()
     workflow = "classic"
-    
+
+    # ── Semantic Cache lookup ─────────────────────────────────────────
+    if cache:
+        cached = await cache.get(payload.question, payload.selected_file)
+        if cached:
+            logger.info("Returning semantic cache hit")
+            return cached
+    # ─────────────────────────────────────────────────────────────────
+
     try:
         logger.info(f"Processing query: {payload.question[:50]}...")
-        
+
         # Retrieve relevant chunks
         retrieved_chunks = await rag_service.search_and_retrieve(
             query=payload.question,
@@ -274,12 +290,19 @@ async def query_documents(
             for chunk in retrieved_chunks
         ]
 
-        return {
+        result_payload = {
             "answer": answer,
             "retrieved_chunks": formatted_chunks,
             "citations": citations,
         }
-        
+
+        # ── Semantic Cache store ──────────────────────────────────────
+        if cache:
+            await cache.set(payload.question, payload.selected_file, result_payload)
+        # ─────────────────────────────────────────────────────────────
+
+        return result_payload
+
     except ValueError as exc:
         logger.error(f"Query validation failed: {exc}")
         observe_rag_query(
@@ -313,6 +336,7 @@ async def query_documents(
                 workflow=workflow,
                 retrieved_chunks=len(retrieved_chunks),
             )
+
 
 
 @router.post("/query-langgraph", response_model=dict[str, Any])
@@ -409,9 +433,16 @@ async def list_documents(
         documents = await rag_service.get_all_documents()
         stats = await rag_service.get_vector_store_stats()
 
+        # Deduplicate documents by filename, keeping the first occurrence
+        unique_docs = {}
+        for doc in documents:
+            filename = doc.get("filename", "")
+            if filename and filename not in unique_docs:
+                unique_docs[filename] = doc
+
         return {
             "total_chunks": stats.get("total_chunks", 0),
-            "total_documents": stats.get("total_documents", 0),
+            "total_documents": len(unique_docs),
             "documents": [
                 {
                     "document_id": doc.get("_id", ""),
@@ -423,7 +454,7 @@ async def list_documents(
                     "storage_url": doc.get("metadata", {}).get("storage_url", ""),
                     "analysis_report": doc.get("metadata", {}).get("analysis_report", {}),
                 }
-                for doc in documents
+                for doc in unique_docs.values()
             ],
             "stats": stats,
         }
@@ -699,3 +730,45 @@ async def get_file_analytics(
     except Exception as exc:
         logger.error(f"Failed to get file analytics for {file_name}: {exc}")
         raise HTTPException(status_code=500, detail=f"Failed to get file analytics: {str(exc)}") from exc
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Semantic Cache Management Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.get("/cache/stats", response_model=dict[str, Any], tags=["cache"])
+async def get_cache_stats(
+    current_user: dict = Depends(require_admin),
+    cache: SemanticCacheService | None = Depends(get_semantic_cache),
+):
+    """Get semantic cache hit/miss statistics. **Admin only.**
+
+    Returns cache performance metrics including:
+    - Total number of cached entries
+    - Hit/miss counts and hit rate
+    - Similarity threshold in use
+    """
+    if not cache:
+        return {"enabled": False, "reason": "Redis not available or REDIS_ENABLED=false"}
+    stats = await cache.get_stats()
+    return stats
+
+
+@router.delete("/cache/invalidate", response_model=dict[str, Any], tags=["cache"])
+async def invalidate_cache(
+    current_user: dict = Depends(require_admin),
+    cache: SemanticCacheService | None = Depends(get_semantic_cache),
+):
+    """Clear all semantic cache entries. **Admin only.**
+
+    Use this after uploading new documents to ensure the cache doesn't
+    serve stale answers based on old data.
+    """
+    if not cache:
+        return {"enabled": False, "deleted": 0, "reason": "Redis not available"}
+    deleted = await cache.invalidate_all()
+    logger.info(f"Admin {current_user.get('username')} invalidated semantic cache ({deleted} keys)")
+    return {
+        "message": "Semantic cache cleared successfully",
+        "keys_deleted": deleted,
+    }

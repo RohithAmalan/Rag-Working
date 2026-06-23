@@ -16,6 +16,7 @@ from app.routes.audit_routes import router as audit_router
 from app.services.faiss_rag_service import FaissRagService
 from app.services.embedding_service import get_embedding_model
 from app.services.rag_service import RagService
+from app.services.semantic_cache_service import SemanticCacheService
 from app.utils.config import settings
 from app.utils.logger import get_logger
 from app.utils.metrics import observe_http_request, set_storage_backend, start_timer
@@ -104,6 +105,29 @@ async def startup_event():
     logger.info("Starting RAG application")
     app.state.rag_service = None
     app.state.storage_backend = "uninitialized"
+    app.state.semantic_cache = None
+
+    # Initialize Redis Semantic Cache
+    if settings.redis_enabled:
+        try:
+            import redis.asyncio as aioredis
+            redis_client = aioredis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=False,
+            )
+            cache = SemanticCacheService(
+                redis_client=redis_client,
+                similarity_threshold=settings.cache_similarity_threshold,
+                ttl_seconds=settings.cache_ttl_seconds,
+            )
+            await cache.initialize()
+            app.state.semantic_cache = cache
+            logger.info("Redis semantic cache initialized")
+        except Exception as e:
+            logger.warning(f"Could not initialize Redis cache (continuing without cache): {e}")
+    else:
+        logger.info("Redis cache disabled (REDIS_ENABLED=false)")
 
     # Connect to MongoDB
     try:
@@ -155,7 +179,10 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Close MongoDB connection on shutdown."""
+    """Close MongoDB and Redis connections on shutdown."""
     logger.info("Shutting down RAG application")
     await close_mongo_connection()
     logger.info("MongoDB connection closed")
+    if app.state.semantic_cache:
+        await app.state.semantic_cache.close()
+        logger.info("Redis cache connection closed")

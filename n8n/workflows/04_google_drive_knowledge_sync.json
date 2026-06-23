@@ -1,0 +1,299 @@
+{
+  "name": "04 - Google Drive Knowledge Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (2 AM Daily)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "query": "modifiedTime > '{{ $today.minus(1, \"days\").toISO() }}' and mimeType != 'application/vnd.google-apps.folder'",
+        "options": {
+          "fields": [
+            "id",
+            "name",
+            "mimeType",
+            "modifiedTime"
+          ]
+        }
+      },
+      "id": "google-drive-search",
+      "name": "Google Drive: Find Modified Files",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-files-found",
+      "name": "IF: Files Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $json.id }}"
+      },
+      "id": "google-drive-download",
+      "name": "Google Drive: Download File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 2,
+      "position": [
+        920,
+        280
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"username\":\"admin\",\"password\":\"admin123\"}",
+        "options": {}
+      },
+      "id": "login-node",
+      "name": "FastAPI: Get Admin Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const loginItem = $input.item;\nconst fileItem = $('Google Drive: Download File').item;\n\nreturn [{\n  json: loginItem.json,\n  binary: {\n    data: fileItem.binary.data\n  }\n}];"
+      },
+      "id": "merge-data",
+      "name": "Code: Merge Token & File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "files",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "upload-node",
+      "name": "FastAPI: Upload to Vector DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "text": "Slack: Notify No Files Updated",
+        "channel": "#rag-admin",
+        "message": "Daily Google Drive sync completed. No new or modified files found to ingest today."
+      },
+      "id": "slack-no-files",
+      "name": "Slack: Nothing to Sync",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        920,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "text": "Slack: Notify Success",
+        "channel": "#rag-admin",
+        "message": "=Successfully synced and vectorized {{ $json.processed_files }} files from Google Drive to the RAG database."
+      },
+      "id": "slack-success",
+      "name": "Slack: Sync Complete",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        280
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger (2 AM Daily)": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Find Modified Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Find Modified Files": {
+      "main": [
+        [
+          {
+            "node": "IF: Files Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Files Found?": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Download File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Nothing to Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Download File": {
+      "main": [
+        [
+          {
+            "node": "FastAPI: Get Admin Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FastAPI: Get Admin Token": {
+      "main": [
+        [
+          {
+            "node": "Code: Merge Token & File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Merge Token & File": {
+      "main": [
+        [
+          {
+            "node": "FastAPI: Upload to Vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FastAPI: Upload to Vector DB": {
+      "main": [
+        [
+          {
+            "node": "Slack: Sync Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f789d2e1-a9c3-4d7a-b5e1-8f2e7c3a4b6d",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "4",
+  "tags": []
+}

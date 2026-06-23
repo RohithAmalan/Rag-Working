@@ -68,6 +68,18 @@ class Settings(BaseSettings):
     keycloak_realm: str = Field(default="rag-realm", validation_alias="KEYCLOAK_REALM")
     keycloak_client_id: str = Field(default="rag-app", validation_alias="KEYCLOAK_CLIENT_ID")
 
+    # Redis Semantic Cache Configuration
+    redis_enabled: bool = Field(default=True, validation_alias="REDIS_ENABLED")
+    redis_url: str = Field(default="redis://localhost:6379", validation_alias="REDIS_URL")
+    cache_similarity_threshold: float = Field(
+        default=0.92,
+        validation_alias="CACHE_SIMILARITY_THRESHOLD",
+    )
+    cache_ttl_seconds: int = Field(
+        default=3600,
+        validation_alias="CACHE_TTL_SECONDS",
+    )
+
     # n8n Workflow Automation
     n8n_webhook_url: str = Field(
         default="http://localhost:5678/webhook/rag-event",
