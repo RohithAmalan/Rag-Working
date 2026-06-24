@@ -2,14 +2,17 @@
   "realm": "rag-realm",
   "displayName": "RAG Application",
   "enabled": true,
-  "sslRequired": "none",
+  "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
-  "resetPasswordAllowed": false,
+  "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
-  "bruteForceProtected": false,
-  "accessTokenLifespan": 86400,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "accessTokenLifespan": 900,
   "ssoSessionMaxLifespan": 86400,
   "clients": [
     {
@@ -19,19 +22,17 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:5173/*",
         "http://localhost:5174/*",
-        "http://localhost:3000/*",
-        "http://localhost/*"
+        "http://localhost:3000/*"
       ],
       "webOrigins": [
         "http://localhost:5173",
         "http://localhost:5174",
-        "http://localhost:3000",
-        "http://localhost"
+        "http://localhost:3000"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
@@ -65,8 +66,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "admin123",
-          "temporary": false
+          "value": "ChangeMe@Admin1!",
+          "temporary": true
         }
       ],
       "realmRoles": ["admin", "user"]
@@ -81,8 +82,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "demo123",
-          "temporary": false
+          "value": "ChangeMe@Demo1!",
+          "temporary": true
         }
       ],
       "realmRoles": ["user"]
@@ -97,8 +98,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "user123",
-          "temporary": false
+          "value": "ChangeMe@User1!",
+          "temporary": true
         }
       ],
       "realmRoles": ["user"]
