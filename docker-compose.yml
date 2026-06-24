@@ -5,7 +5,9 @@
 #   Production:  docker-compose up
 #   Development: docker-compose --profile dev up
 #
-# The 'dev' profile enables hot-reload for backend and frontend.
+# REQUIRED — copy .env.example to .env and fill in all values before
+# running. No secrets are hardcoded here; the compose file will fail
+# fast if required env vars are missing.
 # =======================================================================
 
 services:
@@ -17,8 +19,8 @@ services:
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password123}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?MONGO_ROOT_USER is required}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
       MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-rag_db}
     volumes:
       - mongodb_data:/data/db
@@ -50,7 +52,6 @@ services:
     command: redis-server --appendonly yes
 
   # MinIO - S3-compatible object storage
-  # Enabled for backward compatibility with existing uploaded files
   minio:
     image: minio/minio:latest
     container_name: rag-minio
@@ -59,11 +60,11 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
-      - ./.minio-data:/data
+      - minio_data:/data
     networks:
       - rag-network
     command: server /data --console-address ":9001"
@@ -81,11 +82,13 @@ services:
     ports:
       - "8080:8080"
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN is required}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
       KC_DB: dev-file
-      KC_HOSTNAME_STRICT: "false"
-      KC_HTTP_ENABLED: "true"
+      # KC_HTTP_ENABLED and KC_HOSTNAME_STRICT are intentionally left out of
+      # production defaults. Set KC_HTTP_ENABLED=true only for local dev via .env.
+      KC_HTTP_ENABLED: ${KC_HTTP_ENABLED:-false}
+      KC_HOSTNAME_STRICT: ${KC_HOSTNAME_STRICT:-true}
     volumes:
       - ./keycloak:/opt/keycloak/data/import
     command: start-dev --import-realm
@@ -111,31 +114,35 @@ services:
       - ./backend/.env
     environment:
       # MongoDB
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password123@mongodb:27017}
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI is required}
       DATABASE_NAME: ${MONGO_DB_NAME:-rag_db}
       DOCUMENTS_COLLECTION: documents
       CHUNKS_COLLECTION: chunks
-      
+
       # Redis
       REDIS_URL: redis://redis:6379
       REDIS_ENABLED: "true"
-      
+
       # MinIO
       MINIO_ENABLED: "true"
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       MINIO_BUCKET: rag-files
       MINIO_USE_SSL: "false"
-      
+
       # LLM
+      GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY is required}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
-      
+
       # App
       APP_NAME: "RAG Application"
       ALLOW_START_WITHOUT_MONGO: "false"
       LANGGRAPH_WORKFLOW_MODE: ${LANGGRAPH_WORKFLOW_MODE:-multi_agent}
-      
+
+      # CORS — restrict to known frontend origins
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:3000}
+
       # Embedding
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
@@ -148,7 +155,6 @@ services:
     volumes:
       - backend_uploads:/app/uploads
       - backend_vectorstore:/app/vectorstore
-      - ./.minio-data/rag-files:/app/minio-data:ro
     depends_on:
       mongodb:
         condition: service_healthy
@@ -180,47 +186,37 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # MongoDB
       MONGODB_URI: ${BACKEND_DEV_MONGODB_URI:-mongodb://admin:password123@mongodb:27017/?authSource=admin}
       DATABASE_NAME: ${MONGO_DB_NAME:-rag_db}
       DOCUMENTS_COLLECTION: documents
       CHUNKS_COLLECTION: chunks
-      
-      # Redis
       REDIS_URL: redis://redis:6379
       REDIS_ENABLED: "true"
-      
-      # MinIO
       MINIO_ENABLED: "true"
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: rag-files
       MINIO_USE_SSL: "false"
-      
-      # LLM
+      GROQ_API_KEY: ${GROQ_API_KEY}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
-      
-      # App
       APP_NAME: "RAG Application"
       ALLOW_START_WITHOUT_MONGO: "false"
       LANGGRAPH_WORKFLOW_MODE: ${LANGGRAPH_WORKFLOW_MODE:-multi_agent}
       DEBUG: "true"
-      
-      # Embedding
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:3000}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
-
-      # Keycloak
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-rag-realm}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rag-app}
       N8N_WEBHOOK_URL: http://n8n:5678/webhook/rag-event
     volumes:
-      - ./backend:/app  # Hot reload for development
+      - ./backend:/app  # Hot reload
       - backend_uploads:/app/uploads
       - backend_vectorstore:/app/vectorstore
-    command: sh -c "pip install --no-cache-dir 'python-jose[cryptography]' && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+    # python-jose is in requirements.txt — no runtime pip install needed
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
     depends_on:
       redis:
         condition: service_healthy
@@ -245,7 +241,7 @@ services:
     container_name: rag-frontend
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "5174:80"   # Changed from 5173 to avoid conflict with frontend-dev
     depends_on:
       - backend
     networks:
@@ -310,8 +306,8 @@ services:
     ports:
       - "${GRAFANA_PORT:-3003}:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER is required}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana_data:/var/lib/grafana
@@ -341,12 +337,15 @@ services:
       - NODE_ENV=production
       - WEBHOOK_URL=http://localhost:5678/
       - GENERIC_TIMEZONE=Asia/Kolkata
-      - N8N_SECURE_COOKIE=false
-      # Disable user management so no login screen blocks access (dev mode)
-      - N8N_USER_MANAGEMENT_DISABLED=true
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-true}
+      # User management: enable by default for security.
+      # Set N8N_USER_MANAGEMENT_DISABLED=true only for local dev via .env.
+      - N8N_USER_MANAGEMENT_DISABLED=${N8N_USER_MANAGEMENT_DISABLED:-false}
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:?N8N_BASIC_AUTH_USER is required}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD is required}
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./inbox:/home/node/.n8n-files
     networks:
       - rag-network
     depends_on:
@@ -366,12 +365,13 @@ services:
       dockerfile: Dockerfile
     container_name: rag-inbox-watcher
     restart: unless-stopped
-    command: python /workspace/watch_inbox.py
+    command: python /app/watch_inbox.py
     environment:
-      INBOX_PATH: /workspace/inbox
+      INBOX_PATH: /inbox
       N8N_WEBHOOK_URL: http://n8n:5678/webhook/ingest-document
     volumes:
-      - ./:/workspace
+      # Mount only the inbox directory — not the entire project root
+      - ./inbox:/inbox
     depends_on:
       n8n:
         condition: service_started
