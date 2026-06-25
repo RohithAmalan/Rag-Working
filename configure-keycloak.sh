@@ -3,9 +3,16 @@
 # Keycloak Configuration Helper
 # This script helps configure Keycloak environment variables
 
+set -e  # Exit on any error
+
 echo "🔐 Keycloak Configuration Helper"
 echo "================================"
 echo ""
+
+# Resolve paths relative to script location (cross-platform, not hardcoded)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_ENV="$SCRIPT_DIR/backend/.env"
+FRONTEND_ENV="$SCRIPT_DIR/frontend/.env"
 
 # Check if Keycloak is running
 echo "Checking Keycloak status..."
@@ -20,14 +27,11 @@ fi
 echo ""
 echo "Configuring backend .env file..."
 
-# Backend .env
-BACKEND_ENV="/Users/rohith/RAG/backend/.env"
-
 # Check if .env exists, if not create from example
 if [ ! -f "$BACKEND_ENV" ]; then
-    if [ -f "/Users/rohith/RAG/backend/.env.example" ]; then
+    if [ -f "$SCRIPT_DIR/backend/.env.example" ]; then
         echo "Creating .env from .env.example..."
-        cp /Users/rohith/RAG/backend/.env.example "$BACKEND_ENV"
+        cp "$SCRIPT_DIR/backend/.env.example" "$BACKEND_ENV"
     else
         echo "Creating new .env file..."
         touch "$BACKEND_ENV"
@@ -39,9 +43,10 @@ echo ""
 echo "Adding Keycloak configuration to backend/.env..."
 
 # Remove old Keycloak lines if they exist
-sed -i.bak '/KEYCLOAK_URL/d' "$BACKEND_ENV"
-sed -i.bak '/KEYCLOAK_REALM/d' "$BACKEND_ENV"
-sed -i.bak '/KEYCLOAK_CLIENT_ID/d' "$BACKEND_ENV"
+# Use portable sed syntax (works on both macOS and Linux)
+sed -i'' -e '/KEYCLOAK_URL/d' "$BACKEND_ENV"
+sed -i'' -e '/KEYCLOAK_REALM/d' "$BACKEND_ENV"
+sed -i'' -e '/KEYCLOAK_CLIENT_ID/d' "$BACKEND_ENV"
 
 # Add new Keycloak settings
 cat >> "$BACKEND_ENV" << 'ENVEOF'
@@ -55,8 +60,6 @@ ENVEOF
 echo "✅ Backend .env configured"
 
 # Frontend .env
-FRONTEND_ENV="/Users/rohith/RAG/frontend/.env"
-
 echo ""
 echo "Configuring frontend .env file..."
 
@@ -65,8 +68,8 @@ if [ ! -f "$FRONTEND_ENV" ]; then
     touch "$FRONTEND_ENV"
 fi
 
-# Remove old settings
-sed -i.bak '/VITE_KEYCLOAK/d' "$FRONTEND_ENV" 2>/dev/null || true
+# Remove old settings — portable sed
+sed -i'' -e '/VITE_KEYCLOAK/d' "$FRONTEND_ENV"
 
 # Add frontend Keycloak settings
 cat >> "$FRONTEND_ENV" << 'FRONTEOF'
@@ -93,8 +96,8 @@ echo ""
 echo "✅ Configuration complete!"
 echo ""
 echo "Next steps:"
-echo "1. Configure Keycloak (see KEYCLOAK_RBAC_GUIDE.md)"
-echo "2. Create realm 'rag-realm' in Keycloak admin console"
-echo "3. Create client 'rag-app' with proper settings"
-echo "4. Create test users with roles (admin, user)"
+echo "1. Import keycloak/realm-export.json via Keycloak Admin Console → Import"
+echo "2. Log in with the temporary credentials from realm-export.json"
+echo "3. You will be prompted to set a permanent password on first login"
+echo "4. See docs/setup-guides/ for full RBAC and deployment guides"
 echo "5. Restart backend and frontend to apply changes"
