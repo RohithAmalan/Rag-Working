@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import logging
+from datetime import datetime
 from typing import Any
-
-from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from app.services.embedding_service import cosine_similarity
 from app.utils.config import settings
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +25,14 @@ class DocumentsCollection:
         filename: str,
         file_type: str,
         path: str,
+        metadata: dict[str, Any] | None = None,
     ) -> ObjectId:
         """Insert document metadata."""
         doc = {
             "filename": filename,
             "file_type": file_type,
             "path": path,
+            "metadata": metadata or {},
             "uploaded_at": datetime.utcnow(),
         }
         result = await self.collection.insert_one(doc)
@@ -110,7 +111,9 @@ class ChunksCollection:
         """Search chunks by vector similarity using MongoDB Atlas Vector Search."""
         match_stage = []
         if source_priority:
-            match_stage.append({"$match": {"metadata.source_priority": source_priority}})
+            match_stage.append(
+                {"$match": {"metadata.source_priority": source_priority}}
+            )
 
         pipeline = [
             {
@@ -140,9 +143,13 @@ class ChunksCollection:
             atlas_results = await cursor.to_list(length=None)
             if atlas_results:
                 return atlas_results
-            logger.warning("Atlas vector search returned no hits, falling back to manual cosine search")
+            logger.warning(
+                "Atlas vector search returned no hits, falling back to manual cosine search"
+            )
         except Exception as exc:
-            logger.warning(f"Atlas vector search failed, falling back to manual cosine search: {exc}")
+            logger.warning(
+                f"Atlas vector search failed, falling back to manual cosine search: {exc}"
+            )
 
         query: dict[str, Any] = {}
         if source_priority:

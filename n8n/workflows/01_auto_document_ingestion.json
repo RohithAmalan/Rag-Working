@@ -1,0 +1,179 @@
+{
+  "id": "1",
+  "name": "01 - Auto Document Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest-document",
+        "responseMode": "lastNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Receive File",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "rag-ingest-document"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"username\":\"admin\",\"password\":\"admin123\"}",
+        "options": {}
+      },
+      "id": "login-node",
+      "name": "FastAPI: Get Admin Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const loginItem = $input.item;\nconst webhookItem = $('Webhook: Receive File').item;\n\nreturn [{\n  json: loginItem.json,\n  binary: {\n    data: webhookItem.binary.data\n  }\n}];"
+      },
+      "id": "merge-data",
+      "name": "Code: Merge Token & File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "files",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "upload-node",
+      "name": "FastAPI: Upload & Embed File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "check-success",
+              "leftValue": "={{ $json.processed_files }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ]
+        }
+      },
+      "id": "if-success",
+      "name": "IF: Upload Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const uploadResult = $('FastAPI: Upload & Embed File').item.json;\nreturn [{ json: {\n  status: 'success',\n  event: 'document_ingested',\n  processed_files: uploadResult.processed_files || 0,\n  total_chunks: uploadResult.total_chunks || 0,\n  timestamp: new Date().toISOString(),\n  source: 'n8n-workflow-01'\n}}];"
+      },
+      "id": "format-success",
+      "name": "Format: Success Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/audit/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event: $json.event, severity: 'info', username: 'system_monitor', details: { processed_files: $json.processed_files, total_chunks: $json.total_chunks }, source: $json.source }) }}",
+        "options": {}
+      },
+      "id": "fastapi-log-success",
+      "name": "FastAPI: Log Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const uploadResult = $('FastAPI: Upload & Embed File').item.json;\nreturn [{ json: {\n  status: 'error',\n  event: 'document_ingestion_failed',\n  error: uploadResult.detail || uploadResult.message || 'Upload returned 0 processed files',\n  timestamp: new Date().toISOString(),\n  source: 'n8n-workflow-01'\n}}];"
+      },
+      "id": "format-error",
+      "name": "Format: Error Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag-backend:8000/audit/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event: $json.event, severity: 'error', username: 'system_monitor', details: { error: $json.error }, source: $json.source }) }}",
+        "options": {}
+      },
+      "id": "fastapi-log-error",
+      "name": "FastAPI: Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, 420]
+    }
+  ],
+  "connections": {
+    "Webhook: Receive File": {
+      "main": [[{ "node": "FastAPI: Get Admin Token", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: Get Admin Token": {
+      "main": [[{ "node": "Code: Merge Token & File", "type": "main", "index": 0 }]]
+    },
+    "Code: Merge Token & File": {
+      "main": [[{ "node": "FastAPI: Upload & Embed File", "type": "main", "index": 0 }]]
+    },
+    "FastAPI: Upload & Embed File": {
+      "main": [[{ "node": "IF: Upload Succeeded?", "type": "main", "index": 0 }]]
+    },
+    "IF: Upload Succeeded?": {
+      "main": [
+        [{ "node": "Format: Success Log", "type": "main", "index": 0 }],
+        [{ "node": "Format: Error Log", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format: Success Log": {
+      "main": [[{ "node": "FastAPI: Log Success", "type": "main", "index": 0 }]]
+    },
+    "Format: Error Log": {
+      "main": [[{ "node": "FastAPI: Log Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

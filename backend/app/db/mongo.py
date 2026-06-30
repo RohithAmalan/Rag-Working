@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+from app.utils.config import settings
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, DESCENDING
-
-from app.utils.config import settings
+from pymongo.errors import OperationFailure
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,11 @@ async def connect_to_mongo() -> None:
     global _mongo_client, _db
 
     logger.info(f"Connecting to MongoDB: {settings.mongodb_uri[:50]}...")
-    _mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
+    _mongo_client = AsyncIOMotorClient(
+        settings.mongodb_uri,
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+    )
 
     # Test connection
     try:
@@ -80,8 +84,14 @@ async def _create_indexes() -> None:
         }
         await chunks_col.create_search_index(vector_search_index)
         logger.info("Created vector search index on chunks collection")
+    except OperationFailure as e:
+        # Atlas returns code 68 when the search index name already exists.
+        if getattr(e, "code", None) == 68 or "already defined" in str(e):
+            logger.info("Vector search index already exists on chunks collection")
+        else:
+            logger.warning(f"Could not create vector search index: {e}")
     except Exception as e:
-        logger.warning(f"Vector search index might already exist: {e}")
+        logger.warning(f"Could not create vector search index: {e}")
 
 
 def get_database() -> AsyncIOMotorDatabase:

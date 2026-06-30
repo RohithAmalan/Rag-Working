@@ -5,13 +5,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import UploadFile
-
 from app.models.schemas import DocumentSummary
 from app.rag.embeddings import get_embeddings
 from app.rag.generator import generate_answer
 from app.services.file_service import FileService
 from app.vectorstore.faiss_store import VectorStoreManager
+from fastapi import UploadFile
 
 
 class RagPipeline:
@@ -49,8 +48,16 @@ class RagPipeline:
         merged_docs = existing_docs + new_docs
         self._save_cache(merged_docs)
 
-        primary_docs = [d for d in merged_docs if d.get("metadata", {}).get("source_priority") == "primary"]
-        secondary_docs = [d for d in merged_docs if d.get("metadata", {}).get("source_priority") == "secondary"]
+        primary_docs = [
+            d
+            for d in merged_docs
+            if d.get("metadata", {}).get("source_priority") == "primary"
+        ]
+        secondary_docs = [
+            d
+            for d in merged_docs
+            if d.get("metadata", {}).get("source_priority") == "secondary"
+        ]
 
         self.vector_manager.rebuild(primary_docs, secondary_docs)
 
@@ -134,7 +141,9 @@ class RagPipeline:
         )
 
     def _save_cache(self, docs: list[dict[str, Any]]) -> None:
-        self.cache_file.write_text(json.dumps(docs, ensure_ascii=True, indent=2), encoding="utf-8")
+        self.cache_file.write_text(
+            json.dumps(docs, ensure_ascii=True, indent=2), encoding="utf-8"
+        )
 
     def _load_cache(self) -> list[dict[str, Any]]:
         if not self.cache_file.exists():

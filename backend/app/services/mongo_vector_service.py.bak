@@ -1,0 +1,4 @@
+# This file was accidentally committed by `sed -i.bak` on macOS.
+# It is an outdated copy of mongo_vector_service.py and should be ignored.
+# The fix for `sed -i.bak` cross-platform issue is tracked in configure-keycloak.sh PR #1.
+# This placeholder replaces the stale .bak file — safe to delete entirely after merge.

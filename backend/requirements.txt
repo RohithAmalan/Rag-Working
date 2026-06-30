@@ -1,15 +1,68 @@
+# Web framework
 fastapi
 uvicorn[standard]
 python-multipart
+
+# Auth / Security
+python-jose[cryptography]
+bcrypt
+httpx
+
+# Data / File parsing
 pandas
 openpyxl
 pypdf
+
+# Config
 pydantic-settings
+python-dotenv
+
+# LLM / RAG
 groq
-motor
-pymongo
 langchain
 langchain-community
 langchain-openai
+langgraph
+langgraph-checkpoint
+
+# Embeddings (CPU-only torch build)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers
-python-dotenv
+
+# Vector stores
+faiss-cpu
+motor
+pymongo
+
+# Storage / Infrastructure
+minio
+redis[hiredis]
+
+# Observability
+prometheus-client
+
+# File watching
+watchdog
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+pytest-mock
+
+# RAG evaluation
+ragas
+datasets
+
+# Static analysis / security scanning
+bandit
+safety
+pip-audit
+
+# CVE / vulnerability pin-fixes
+filelock>=3.20.1
+langsmith>=0.7.0
+nltk==3.9.2
+lxml>=6.1.0
+idna>=3.12

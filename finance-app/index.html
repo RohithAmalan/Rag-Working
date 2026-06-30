@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance Management System</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@24.0.0/dist/keycloak.min.js"></script>
+</head>
+<body>
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Connecting to Keycloak SSO...</p>
+    </div>
+
+    <div id="loginPage" class="login-page" style="display: none;">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>💰 Finance Management System</h1>
+                <p>Secure Expense Management Platform</p>
+            </div>
+            <div class="login-card">
+                <h2>Sign In</h2>
+                <p class="login-subtitle">Use your Keycloak credentials to access the Finance system</p>
+                <div id="loginError" class="error-message" style="display: none;"></div>
+                <button onclick="loginWithKeycloak()" class="btn btn-primary btn-block btn-keycloak">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                        <polyline points="10 17 15 12 10 7"></polyline>
+                        <line x1="15" y1="12" x2="3" y2="12"></line>
+                    </svg>
+                    Sign in with Keycloak
+                </button>
+                <div class="login-info">
+                    <p class="text-small">
+                        <strong>Test Credentials:</strong><br>
+                        Admin: <code>admin / admin123</code><br>
+                        User: <code>rohith / password</code>
+                    </p>
+                </div>
+            </div>
+            <div class="login-footer">
+                <a href="http://localhost:5173">📊 RAG App</a>
+                <span>•</span>
+                <a href="http://localhost:3001">👥 HR App</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="app" style="display: none;">
+        <header class="header">
+            <div class="header-content">
+                <h1>💰 Finance Management System</h1>
+                <div class="user-info">
+                    <span id="username" class="username"></span>
+                    <span id="userRole" class="user-role"></span>
+                    <button id="logoutBtn" class="btn btn-logout">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <nav class="nav">
+            <a href="http://localhost:5173" class="nav-link">📊 RAG App</a>
+            <a href="http://localhost:3001" class="nav-link">👥 HR App</a>
+            <a href="http://localhost:3002" class="nav-link active">💰 Finance App</a>
+        </nav>
+
+        <main class="main">
+            <div class="container">
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Expenses</h3>
+                        <p id="totalExpenses" class="stat-value">$0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pending</h3>
+                        <p id="pendingCount" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Approved</h3>
+                        <p id="approvedCount" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Rejected</h3>
+                        <p id="rejectedCount" class="stat-value">0</p>
+                    </div>
+                </div>
+
+                <!-- Expense List -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Expense Reports</h2>
+                        <button id="submitExpenseBtn" class="btn btn-primary">+ Submit Expense</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="expenseList" class="expense-list"></div>
+                    </div>
+                </div>
+
+                <!-- Submit Expense Form -->
+                <div id="submitExpenseForm" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2>Submit New Expense</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="expenseForm">
+                            <div class="form-group">
+                                <label>Expense Title</label>
+                                <input type="text" id="expTitle" class="form-input" placeholder="e.g., Office Supplies" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Category</label>
+                                <select id="expCategory" class="form-input" required>
+                                    <option value="">Select Category</option>
+                                    <option value="Travel">Travel</option>
+                                    <option value="Office Supplies">Office Supplies</option>
+                                    <option value="Software">Software</option>
+                                    <option value="Training">Training</option>
+                                    <option value="Equipment">Equipment</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Amount ($)</label>
+                                <input type="number" id="expAmount" class="form-input" step="0.01" min="0" placeholder="0.00" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="expDescription" class="form-input" rows="3" placeholder="Brief description of the expense" required></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Submit Expense</button>
+                                <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Finance Management System | Keycloak SSO Demo | Port 3002</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

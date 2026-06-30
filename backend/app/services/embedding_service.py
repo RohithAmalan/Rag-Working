@@ -7,9 +7,8 @@ import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
-
 from app.utils.config import settings
+from sentence_transformers import SentenceTransformer
 
 if TYPE_CHECKING:
     pass
@@ -71,7 +70,9 @@ def generate_single_embedding(text: str) -> list[float]:
     return embedding.tolist()
 
 
-def generate_batch_embeddings(texts: list[str], batch_size: int = 32) -> list[list[float]]:
+def generate_batch_embeddings(
+    texts: list[str], batch_size: int = 32
+) -> list[list[float]]:
     """Generate embeddings for multiple texts with batching.
 
     Args:

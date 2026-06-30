@@ -35,9 +35,23 @@ def _normalize_cell(value) -> str:
     return text if text else "unknown"
 
 
-def dataframe_to_documents(df, file_name: str, source_type: str, sheet_name: str | None = None) -> list[dict[str, Any]]:
+def dataframe_to_documents(
+    df, file_name: str, source_type: str, sheet_name: str | None = None
+) -> list[dict[str, Any]]:
     """Convert DataFrame rows to documents with enhanced searchability for lookups."""
+    import re as _re
+
     docs: list[dict[str, Any]] = []
+    # Drop columns that are purely unnamed index artifacts (Unnamed: 0, Unnamed: 1, …)
+    real_cols = [
+        col
+        for col in df.columns
+        if not _re.match(r"^Unnamed:.*$", str(col).strip(), _re.IGNORECASE)
+    ]
+    if real_cols:
+        df = df[real_cols]
+    # Drop rows where every cell is NaN/empty
+    df = df.dropna(how="all").reset_index(drop=True)
     columns = [str(col).strip() for col in df.columns]
 
     for row_index, row in df.iterrows():
@@ -51,7 +65,7 @@ def dataframe_to_documents(df, file_name: str, source_type: str, sheet_name: str
             row_dict[col] = value
             row_pairs.append(f"{col}={value}")
             row_facts.append(f"{col} is {value}")
-            
+
             # Add lookup keywords for common ID/identifier fields
             col_lower = col.lower()
             if "id" in col_lower and value != "unknown":
@@ -73,8 +87,14 @@ def dataframe_to_documents(df, file_name: str, source_type: str, sheet_name: str
                 # Add field-aware versions for better semantic matching
                 enriched_fields.append(f"{col.lower()}: {val}")
 
-        enriched_text = " | ".join(enriched_fields) if enriched_fields else semantic_sentence
-        lookup_section = " Lookup keywords: " + " | ".join(lookup_keywords) if lookup_keywords else ""
+        enriched_text = (
+            " | ".join(enriched_fields) if enriched_fields else semantic_sentence
+        )
+        lookup_section = (
+            " Lookup keywords: " + " | ".join(lookup_keywords)
+            if lookup_keywords
+            else ""
+        )
 
         content = (
             f"Business data row from {file_name}. "
@@ -99,7 +119,9 @@ def dataframe_to_documents(df, file_name: str, source_type: str, sheet_name: str
     return docs
 
 
-def chunk_pdf_texts(file_name: str, page_texts: list[str], chunk_size: int, chunk_overlap: int) -> list[dict[str, Any]]:
+def chunk_pdf_texts(
+    file_name: str, page_texts: list[str], chunk_size: int, chunk_overlap: int
+) -> list[dict[str, Any]]:
     docs: list[dict[str, Any]] = []
     chunk_index = 0
 

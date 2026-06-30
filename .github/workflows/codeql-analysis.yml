@@ -1,0 +1,207 @@
+name: "CodeQL Security & Quality Analysis"
+
+on:
+  push:
+    branches: [ "main", "develop", "feature-*" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+  schedule:
+    # Run CodeQL analysis every Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+
+jobs:
+  analyze:
+    name: Analyze Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      # Required for all workflows
+      security-events: write
+      # Only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Initialize CodeQL tools
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # Custom queries for enhanced security scanning
+          queries: +security-and-quality,security-extended
+
+      # Python-specific setup
+      - name: Set up Python (for Python analysis)
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        if: matrix.language == 'python'
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      # JavaScript/TypeScript setup
+      - name: Set up Node.js (for JS/TS analysis)
+        if: matrix.language == 'javascript-typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Node dependencies
+        if: matrix.language == 'javascript-typescript'
+        run: |
+          cd frontend
+          npm ci
+
+      # Perform CodeQL Analysis
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          output: sarif-results
+          upload: true
+
+      # Upload SARIF results as artifact
+      - name: Upload SARIF results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-results-${{ matrix.language }}
+          path: sarif-results
+          retention-days: 5
+
+  # Additional security checks
+  dependency-check:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Check for known vulnerabilities in Python dependencies
+      - name: Python Security Check (Safety)
+        run: |
+          pip install safety
+          cd backend
+          safety check --json || true
+
+      # Check for known vulnerabilities in npm dependencies
+      - name: Node.js Security Audit
+        run: |
+          cd frontend
+          npm audit --audit-level=moderate || true
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Python linting and code quality
+      - name: Install Python quality tools
+        run: |
+          pip install flake8 pylint black isort bandit
+
+      - name: Run Flake8 (Python linter)
+        run: |
+          cd backend
+          flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 app --count --max-complexity=10 --max-line-length=127 --statistics || true
+
+      - name: Run Bandit (Python security linter)
+        run: |
+          cd backend
+          bandit -r app -f json -o bandit-report.json || true
+          cat bandit-report.json
+
+      - name: Check code formatting with Black
+        run: |
+          cd backend
+          black --check app || true
+
+      - name: Check import ordering with isort
+        run: |
+          cd backend
+          isort --check-only app || true
+
+      # JavaScript/TypeScript linting
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Node dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd frontend
+          npm run lint || true
+
+  test-coverage:
+    name: Test Coverage Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
+
+      - name: Run tests with coverage
+        run: |
+          cd backend
+          pytest --cov=app --cov-report=term --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: backend/htmlcov
+          retention-days: 5
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: orgoro/coverage@v3.1
+        with:
+          coverageFile: backend/coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
