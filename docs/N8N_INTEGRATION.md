@@ -12,9 +12,12 @@ This guide reflects the current setup in the repository and the current runtime 
 
 - n8n is running on `http://localhost:5678`
 - `GET /healthz` returns `{"status":"ok"}`
-- Workflow 1, `ingest-document`, is active and working
-- Workflow 1 successfully uploads files into the RAG backend and writes audit records into MongoDB
-- The container startup auto-publishes workflows 1, 2, and 3 through the n8n CLI so ingest, scheduled report, and alert flows stay active after restart
+- [x] **01 - Auto Document Ingestion**: Webhook-based file upload pipeline
+- [x] **02 - Scheduled RAG Report**: Daily summary of RAG usage and queries
+- [x] **03 - Error Alert Webhook**: Slack/Teams notification for system errors
+- [x] **04 - Google Drive Knowledge Sync**: Daily cron job to sync modified documents from Google Drive into the RAG vector DB
+
+The container startup auto-publishes workflows 1, 2, and 3 through the n8n CLI so ingest, scheduled report, and alert flows stay active after restart
 
 ### Present in repo and active by default
 
@@ -203,12 +206,22 @@ Expected test result:
 
 ### Workflow 3 — Error Alert And Audit Logger
 
+### Workflow 3 — Error Alert And Audit Logger
+
 Source file: [n8n/workflows/03_error_alert_webhook.json](/Users/rohith/RAG/n8n/workflows/03_error_alert_webhook.json)
 
-Current state:
+Listens for system error webhooks from the RAG backend and formats them into actionable Slack/Teams notifications for the administration team.
 
-- Present in repo
-- Active in the startup flow after n8n boots, because Compose publishes workflow 3 automatically
+### Workflow 4 — Google Drive Knowledge Sync
+
+Source file: [n8n/workflows/04_google_drive_knowledge_sync.json](/Users/rohith/RAG/n8n/workflows/04_google_drive_knowledge_sync.json)
+
+Ensures the vector database is always up-to-date with company documents.
+- **Schedule Trigger**: Runs every night at 2:00 AM.
+- **Search**: Scans Google Drive for any files modified in the last 24 hours.
+- **Ingestion**: Downloads the modified files and `POST`s them to the FastAPI `/upload` endpoint.
+- **Notification**: Sends a Slack message summarizing how many files were synced, or alerts if no files were found.
+
 - A direct POST to `/webhook/rag-event` should now be accepted once the n8n container has restarted with the new command
 
 What it is intended to do:

@@ -24,8 +24,14 @@ class MinioService:
         if not self.enabled:
             return
 
-        if not settings.minio_endpoint or not settings.minio_access_key or not settings.minio_secret_key:
-            logger.warning("MinIO is enabled but credentials are incomplete. Falling back to local storage.")
+        if (
+            not settings.minio_endpoint
+            or not settings.minio_access_key
+            or not settings.minio_secret_key
+        ):
+            logger.warning(
+                "MinIO is enabled but credentials are incomplete. Falling back to local storage."
+            )
             self.enabled = False
             return
 
@@ -56,7 +62,9 @@ class MinioService:
             logger.info("MinIO storage is enabled (bucket=%s)", self.bucket)
             return True
         except Exception as exc:
-            logger.warning("MinIO initialization failed (%s). Falling back to local storage.", exc)
+            logger.warning(
+                "MinIO initialization failed (%s). Falling back to local storage.", exc
+            )
             self._client = None
             return False
 
@@ -85,7 +93,9 @@ class MinioService:
         try:
             self._client.fput_object(self.bucket, object_name, str(local_path))
         except Exception as exc:
-            logger.warning("MinIO upload failed (%s). Falling back to local storage metadata.", exc)
+            logger.warning(
+                "MinIO upload failed (%s). Falling back to local storage metadata.", exc
+            )
             return {
                 "storage_backend": "local",
                 "storage_path": str(local_path),
@@ -119,11 +129,11 @@ class MinioService:
 
     def download_file(self, object_name: str, local_path: Path) -> bool:
         """Download a file from MinIO to a local path.
-        
+
         Args:
             object_name: Name of the object in MinIO bucket
             local_path: Local path where to save the file
-            
+
         Returns:
             True if download succeeded, False otherwise
         """

@@ -1,17 +1,16 @@
 """Tests for embedding_service module."""
 
-import pytest
-import numpy as np
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from app.services.embedding_service import (
-    get_embedding_model,
-    generate_embeddings,
-    generate_single_embedding,
-    generate_batch_embeddings,
-    cosine_similarity,
-    _embedding_model,
-)
+import numpy as np
+import pytest
+
+from app.services.embedding_service import (_embedding_model,
+                                            cosine_similarity,
+                                            generate_batch_embeddings,
+                                            generate_embeddings,
+                                            generate_single_embedding,
+                                            get_embedding_model)
 
 
 class TestEmbeddingService:
@@ -21,6 +20,7 @@ class TestEmbeddingService:
     def reset_model(self):
         """Reset global embedding model before each test."""
         import app.services.embedding_service as em
+
         em._embedding_model = None
         yield
         em._embedding_model = None
@@ -109,7 +109,9 @@ class TestEmbeddingService:
         assert isinstance(result, list)
         assert len(result) == 3
         assert result == [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
-        mock_model.encode.assert_called_once_with(texts, batch_size=16, convert_to_numpy=True)
+        mock_model.encode.assert_called_once_with(
+            texts, batch_size=16, convert_to_numpy=True
+        )
 
     @patch("app.services.embedding_service.get_embedding_model")
     def test_generate_batch_embeddings_default_batch_size(self, mock_get_model):
@@ -122,14 +124,16 @@ class TestEmbeddingService:
         texts = ["text1"]
         result = generate_batch_embeddings(texts)
 
-        mock_model.encode.assert_called_once_with(texts, batch_size=32, convert_to_numpy=True)
+        mock_model.encode.assert_called_once_with(
+            texts, batch_size=32, convert_to_numpy=True
+        )
 
     def test_cosine_similarity_identical_vectors(self):
         """Test cosine similarity returns 1.0 for identical vectors."""
         vec = [1.0, 2.0, 3.0]
-        
+
         result = cosine_similarity(vec, vec)
-        
+
         assert isinstance(result, float)
         assert abs(result - 1.0) < 1e-6
 
@@ -137,9 +141,9 @@ class TestEmbeddingService:
         """Test cosine similarity for orthogonal vectors."""
         vec1 = [1.0, 0.0, 0.0]
         vec2 = [0.0, 1.0, 0.0]
-        
+
         result = cosine_similarity(vec1, vec2)
-        
+
         assert isinstance(result, float)
         assert abs(result - 0.0) < 1e-6
 
@@ -147,9 +151,9 @@ class TestEmbeddingService:
         """Test cosine similarity for opposite vectors."""
         vec1 = [1.0, 1.0, 1.0]
         vec2 = [-1.0, -1.0, -1.0]
-        
+
         result = cosine_similarity(vec1, vec2)
-        
+
         assert isinstance(result, float)
         assert abs(result - (-1.0)) < 1e-6
 
@@ -157,9 +161,9 @@ class TestEmbeddingService:
         """Test cosine similarity is independent of vector magnitude."""
         vec1 = [1.0, 0.0]
         vec2 = [2.0, 0.0]  # Same direction, different magnitude
-        
+
         result = cosine_similarity(vec1, vec2)
-        
+
         assert isinstance(result, float)
         assert abs(result - 1.0) < 1e-6
 

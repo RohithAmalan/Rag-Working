@@ -1,7 +1,7 @@
 from time import perf_counter
 
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
-
+from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge, Histogram,
+                               generate_latest)
 
 HTTP_REQUESTS_TOTAL = Counter(
     "rag_http_requests_total",
@@ -60,13 +60,24 @@ def start_timer() -> float:
     return perf_counter()
 
 
-def observe_http_request(method: str, endpoint: str, status_code: int, started: float) -> None:
+def observe_http_request(
+    method: str, endpoint: str, status_code: int, started: float
+) -> None:
     duration = perf_counter() - started
-    HTTP_REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status=str(status_code)).inc()
-    HTTP_REQUEST_DURATION_SECONDS.labels(method=method, endpoint=endpoint).observe(duration)
+    HTTP_REQUESTS_TOTAL.labels(
+        method=method, endpoint=endpoint, status=str(status_code)
+    ).inc()
+    HTTP_REQUEST_DURATION_SECONDS.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
 
 
-def observe_rag_query(duration_seconds: float, status: str, workflow: str, retrieved_chunks: int | None = None) -> None:
+def observe_rag_query(
+    duration_seconds: float,
+    status: str,
+    workflow: str,
+    retrieved_chunks: int | None = None,
+) -> None:
     RAG_QUERIES_TOTAL.labels(status=status, workflow=workflow).inc()
     RAG_QUERY_DURATION_SECONDS.labels(workflow=workflow).observe(duration_seconds)
     if retrieved_chunks is not None:

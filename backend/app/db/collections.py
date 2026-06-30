@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import logging
+from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
@@ -112,7 +112,9 @@ class ChunksCollection:
         """Search chunks by vector similarity using MongoDB Atlas Vector Search."""
         match_stage = []
         if source_priority:
-            match_stage.append({"$match": {"metadata.source_priority": source_priority}})
+            match_stage.append(
+                {"$match": {"metadata.source_priority": source_priority}}
+            )
 
         pipeline = [
             {
@@ -142,9 +144,13 @@ class ChunksCollection:
             atlas_results = await cursor.to_list(length=None)
             if atlas_results:
                 return atlas_results
-            logger.warning("Atlas vector search returned no hits, falling back to manual cosine search")
+            logger.warning(
+                "Atlas vector search returned no hits, falling back to manual cosine search"
+            )
         except Exception as exc:
-            logger.warning(f"Atlas vector search failed, falling back to manual cosine search: {exc}")
+            logger.warning(
+                f"Atlas vector search failed, falling back to manual cosine search: {exc}"
+            )
 
         query: dict[str, Any] = {}
         if source_priority:

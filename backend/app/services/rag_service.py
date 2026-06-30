@@ -11,9 +11,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.rag.chunking import chunk_pdf_texts, dataframe_to_documents
 from app.services.file_service import FileService
+from app.services.langgraph_rag_service import LangGraphRAGService
 from app.services.minio_service import MinioService
 from app.services.mongo_vector_service import MongoVectorService
-from app.services.langgraph_rag_service import LangGraphRAGService
 from app.utils.config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class RagService:
         )
         self.minio_service = MinioService()
         self.vector_service = MongoVectorService(db)
-        
+
         # Initialize LangGraph RAG service with configured workflow mode
         workflow_mode = settings.langgraph_workflow_mode
         if workflow_mode not in ["basic", "advanced", "multi_agent"]:
@@ -39,12 +39,14 @@ class RagService:
                 f"Invalid workflow mode '{workflow_mode}', defaulting to 'multi_agent'"
             )
             workflow_mode = "multi_agent"
-        
+
         self.langgraph_service = LangGraphRAGService(
             self.vector_service,
             workflow_mode=workflow_mode,
         )
-        logger.info(f"RagService initialized with LangGraph workflow mode: {workflow_mode}")
+        logger.info(
+            f"RagService initialized with LangGraph workflow mode: {workflow_mode}"
+        )
 
     async def upload_and_process_files(
         self,
@@ -74,8 +76,13 @@ class RagService:
                 saved_path = await self.file_service.save_upload(file)
                 logger.info(f"Saved file: {saved_path}")
 
-                storage_info = self.minio_service.upload_file(saved_path, file.filename or saved_path.name)
-                if settings.minio_enabled and storage_info.get("storage_backend") != "minio":
+                storage_info = self.minio_service.upload_file(
+                    saved_path, file.filename or saved_path.name
+                )
+                if (
+                    settings.minio_enabled
+                    and storage_info.get("storage_backend") != "minio"
+                ):
                     raise RuntimeError(
                         "MinIO is enabled, but object upload failed. Local storage is disabled for uploads."
                     )
@@ -114,11 +121,13 @@ class RagService:
 
                 stats["processed_files"] += 1
                 stats["total_chunks"] += result["chunks_stored"]
-                stats["documents"].append({
-                    **result,
-                    "storage_backend": storage_info.get("storage_backend", "local"),
-                    "analysis_report": file_report,
-                })
+                stats["documents"].append(
+                    {
+                        **result,
+                        "storage_backend": storage_info.get("storage_backend", "local"),
+                        "analysis_report": file_report,
+                    }
+                )
 
                 logger.info(
                     f"Successfully processed {file.filename}: "
@@ -132,15 +141,25 @@ class RagService:
                 # Only delete local file if MinIO is enabled (file is backed up to MinIO)
                 # If MinIO is disabled, keep the local file for analytics/preview
                 if saved_path is not None and saved_path.exists():
-                    storage_backend = storage_info.get("storage_backend", "local") if 'storage_info' in locals() else "local"
+                    storage_backend = (
+                        storage_info.get("storage_backend", "local")
+                        if "storage_info" in locals()
+                        else "local"
+                    )
                     if storage_backend == "minio" and settings.minio_enabled:
                         try:
                             saved_path.unlink(missing_ok=True)
-                            logger.debug(f"Removed local temp file (backed up to MinIO): {saved_path}")
+                            logger.debug(
+                                f"Removed local temp file (backed up to MinIO): {saved_path}"
+                            )
                         except Exception as unlink_exc:
-                            logger.warning(f"Could not remove local temp file {saved_path}: {unlink_exc}")
+                            logger.warning(
+                                f"Could not remove local temp file {saved_path}: {unlink_exc}"
+                            )
                     else:
-                        logger.debug(f"Keeping local file for analytics/preview: {saved_path}")
+                        logger.debug(
+                            f"Keeping local file for analytics/preview: {saved_path}"
+                        )
 
         logger.info(f"Upload processing complete: {stats}")
         return stats
@@ -174,8 +193,7 @@ class RagService:
             # If we already have a strong exact/structured primary match,
             # avoid diluting the answer with secondary support chunks.
             has_strong_primary_match = any(
-                float(result.get("similarity_score", 0.0)) >= 0.95
-                for result in results
+                float(result.get("similarity_score", 0.0)) >= 0.95 for result in results
             )
 
             # If not enough primary results, add secondary
@@ -190,7 +208,9 @@ class RagService:
 
             # Safety net: if an exact/strong primary hit exists, only return
             # primary chunks even if a secondary expansion happened.
-            if any(float(result.get("similarity_score", 0.0)) >= 0.95 for result in results):
+            if any(
+                float(result.get("similarity_score", 0.0)) >= 0.95 for result in results
+            ):
                 primary_only = [
                     result
                     for result in results
@@ -213,36 +233,38 @@ class RagService:
         file_name: str | None = None,
     ) -> dict[str, Any]:
         """Query using LangGraph orchestrated workflow (Phase 1).
-        
+
         This method uses the LangGraph state machine to orchestrate:
         1. Query analysis (intent detection, entity extraction)
         2. Hybrid retrieval (exact match + vector search + ranking)
         3. Answer generation with citations
-        
+
         Args:
             query: User question
             top_k: Number of chunks to retrieve
             file_name: Optional file name to scope search
-            
+
         Returns:
             dict with answer, chunks, citations, confidence, and metadata
         """
-        logger.info(f"LangGraph query: {query[:100]}... (file={file_name}, top_k={top_k})")
-        
+        logger.info(
+            f"LangGraph query: {query[:100]}... (file={file_name}, top_k={top_k})"
+        )
+
         try:
             result = await self.langgraph_service.query(
                 question=query,
                 selected_file=file_name,
                 top_k=top_k,
             )
-            
+
             logger.info(
                 f"LangGraph result: confidence={result.get('confidence', 0):.2f}, "
                 f"chunks={len(result.get('retrieved_chunks', []))}"
             )
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"LangGraph query failed: {e}", exc_info=True)
             return {
@@ -266,7 +288,9 @@ class RagService:
         if storage_object:
             deleted_from_minio = self.minio_service.delete_object(storage_object)
 
-        deleted_chunks = await self.vector_service.delete_document_and_chunks(document_id)
+        deleted_chunks = await self.vector_service.delete_document_and_chunks(
+            document_id
+        )
 
         return {
             "document_id": document_id,
@@ -286,11 +310,15 @@ class RagService:
         deleted_docs = 0
 
         for doc in docs:
-            storage_object = str(doc.get("metadata", {}).get("storage_object", "")).strip()
+            storage_object = str(
+                doc.get("metadata", {}).get("storage_object", "")
+            ).strip()
             if storage_object and self.minio_service.delete_object(storage_object):
                 deleted_from_minio += 1
 
-            deleted_chunks = await self.vector_service.delete_document_and_chunks(doc.get("_id", ""))
+            deleted_chunks = await self.vector_service.delete_document_and_chunks(
+                doc.get("_id", "")
+            )
             total_chunks += deleted_chunks
             deleted_docs += 1
 

@@ -118,8 +118,7 @@ def cleanup_expired_tokens() -> int:
     """Remove all expired tokens from storage. Returns count of removed tokens."""
     now = datetime.now(timezone.utc)
     expired = [
-        token for token, data in ACTIVE_TOKENS.items()
-        if now > data["expires_at"]
+        token for token, data in ACTIVE_TOKENS.items() if now > data["expires_at"]
     ]
     for token in expired:
         ACTIVE_TOKENS.pop(token, None)

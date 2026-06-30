@@ -1,22 +1,25 @@
-import warnings
 import asyncio
+import warnings
 from contextlib import asynccontextmanager
 
 # Suppress harmless multiprocessing warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
+warnings.filterwarnings(
+    "ignore", category=UserWarning, module="multiprocessing.resource_tracker"
+)
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
-from app.routes.rag_routes import router as rag_router
-from app.routes.system_routes import router as system_router
+from app.db.mongo import close_mongo_connection, connect_to_mongo, get_database
+from app.routes.audit_routes import router as audit_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.evaluation_routes import router as evaluation_router
-from app.routes.audit_routes import router as audit_router
-from app.services.faiss_rag_service import FaissRagService
+from app.routes.rag_routes import router as rag_router
+from app.routes.system_routes import router as system_router
 from app.services.embedding_service import get_embedding_model
+from app.services.faiss_rag_service import FaissRagService
 from app.services.rag_service import RagService
+from app.services.semantic_cache_service import SemanticCacheService
 from app.utils.config import settings
 from app.utils.logger import get_logger
 from app.utils.metrics import observe_http_request, set_storage_backend, start_timer
@@ -26,11 +29,37 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: startup → yield → shutdown."""
+    """Application lifespan: startup -> yield -> shutdown."""
     logger.info("Starting RAG application")
     app.state.rag_service = None
     app.state.storage_backend = "uninitialized"
+    app.state.semantic_cache = None
     mongo_ok = False
+
+    # Initialize Redis Semantic Cache
+    if settings.redis_enabled:
+        try:
+            import redis.asyncio as aioredis
+
+            redis_client = aioredis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=False,
+            )
+            cache = SemanticCacheService(
+                redis_client=redis_client,
+                similarity_threshold=settings.cache_similarity_threshold,
+                ttl_seconds=settings.cache_ttl_seconds,
+            )
+            await cache.initialize()
+            app.state.semantic_cache = cache
+            logger.info("Redis semantic cache initialized")
+        except Exception as e:
+            logger.warning(
+                f"Could not initialize Redis cache (continuing without cache): {e}"
+            )
+    else:
+        logger.info("Redis cache disabled (REDIS_ENABLED=false)")
 
     # Connect to MongoDB
     try:
@@ -73,26 +102,28 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Could not retrieve stats: {e}")
 
-        # Warm the embedding model only when MongoDB is healthy —
-        # no point loading heavy weights if we're in a broken state.
+        # Warm the embedding model at startup
         try:
             await asyncio.to_thread(get_embedding_model)
             logger.info("Embedding model preloaded successfully")
         except Exception as e:
             logger.warning(f"Could not preload embedding model: {e}")
 
-    yield  # ── Application runs ──────────────────────────────────────────
+    yield  # Application runs
 
     logger.info("Shutting down RAG application")
     await close_mongo_connection()
     logger.info("MongoDB connection closed")
+    if app.state.semantic_cache:
+        await app.state.semantic_cache.close()
+        logger.info("Redis cache connection closed")
 
 
 app = FastAPI(
     title=settings.app_name,
     version="1.0.0",
     description="""
-    # 🤖 RAG Application API
+    # RAG Application API
 
     Production-grade Retrieval-Augmented Generation (RAG) system with:
     - **LangGraph** multi-agent workflow orchestration
@@ -101,13 +132,13 @@ app = FastAPI(
     - **Cross-Encoder Reranking** for 20-30% accuracy boost
     - **Citation Generation** with inline source attribution
 
-    ## 🔐 Authentication
+    ## Authentication
     Use `/auth/login` to obtain a Bearer token, then include it in requests:
     ```
     Authorization: Bearer <your_token>
     ```
 
-    ## 📤 Upload Flow
+    ## Upload Flow
     1. Upload files: `POST /upload`
     2. Query documents: `POST /query`
     3. View documents: `GET /documents`
@@ -130,7 +161,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
+# CORS
 # Wildcard origin ("*") is invalid when allow_credentials=True (CORS spec).
 # Load allowed origins from env; fall back to local dev ports only.
 _raw_origins = settings.cors_allowed_origins

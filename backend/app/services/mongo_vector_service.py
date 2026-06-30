@@ -50,14 +50,27 @@ def _extract_exact_terms(query_text: str) -> dict[str, list[str]]:
         result["phones"].append(token.strip())
 
     # Extract emails
-    for token in re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", query_text):
+    for token in re.findall(
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", query_text
+    ):
         result["emails"].append(token.strip())
 
     # Extract full names first (e.g., "Donna Harris") to avoid broad single-name mismatches.
     for match in re.finditer(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b", query_text):
         phrase = match.group(1).strip()
         phrase_l = phrase.lower()
-        if any(noise in phrase_l for noise in ["file", "report", "sheet", "table", "orders", "order", "details"]):
+        if any(
+            noise in phrase_l
+            for noise in [
+                "file",
+                "report",
+                "sheet",
+                "table",
+                "orders",
+                "order",
+                "details",
+            ]
+        ):
             continue
         result["full_names"].append(phrase)
 
@@ -69,14 +82,22 @@ def _extract_exact_terms(query_text: str) -> dict[str, list[str]]:
     # Extract explicit file names and common base-name hints.
     for token in re.findall(r"\b[\w-]+\.(?:csv|xlsx|pdf)\b", query_text, re.IGNORECASE):
         result["file_hints"].append(token.strip())
-    
+
     # Extract specific file name patterns (hyphenated versions)
-    for token in re.findall(r"\b(?:people-\d+|customers-\d+|product-sales-region)\b", query_text, re.IGNORECASE):
+    for token in re.findall(
+        r"\b(?:people-\d+|customers-\d+|product-sales-region)\b",
+        query_text,
+        re.IGNORECASE,
+    ):
         result["file_hints"].append(token.strip())
-    
+
     # Natural language file references - match descriptive phrases like "product sales region file", "sales report"
     # This captures patterns like: [word word word] + (file|report|sheet|data)
-    for match in re.finditer(r"\b(?:product\s+sales(?:\s+region)?|sales\s+region|customers|people|projects?|product|order|inventory)\s+(?:file|report|sheet|data|table)\b", query_text, re.IGNORECASE):
+    for match in re.finditer(
+        r"\b(?:product\s+sales(?:\s+region)?|sales\s+region|customers|people|projects?|product|order|inventory)\s+(?:file|report|sheet|data|table)\b",
+        query_text,
+        re.IGNORECASE,
+    ):
         file_hint = match.group(0).strip()
         # Normalize to match our filenames
         if "product" in file_hint.lower() and "sales" in file_hint.lower():
@@ -110,17 +131,26 @@ def _build_file_hint_filter(file_hints: list[str]) -> dict[str, Any] | None:
     or_clauses = []
     for file_hint in file_hints:
         # Normalize the hint for matching
-        normalized = file_hint.lower().replace("-", "").replace("_", "").replace(" ", "")
-        
+        normalized = (
+            file_hint.lower().replace("-", "").replace("_", "").replace(" ", "")
+        )
+
         # Create multiple regex patterns to match different naming conventions
-        or_clauses.append({"metadata.file_name": {"$regex": re.escape(file_hint), "$options": "i"}})
-        
+        or_clauses.append(
+            {"metadata.file_name": {"$regex": re.escape(file_hint), "$options": "i"}}
+        )
+
         # Also try without separators for more flexible matching
         if normalized:
-            or_clauses.append({
-                "metadata.file_name": {"$regex": normalized.replace(" ", ".*"), "$options": "i"}
-            })
-    
+            or_clauses.append(
+                {
+                    "metadata.file_name": {
+                        "$regex": normalized.replace(" ", ".*"),
+                        "$options": "i",
+                    }
+                }
+            )
+
     return {"$or": or_clauses} if or_clauses else None
 
 
@@ -130,16 +160,18 @@ def _matches_file_hints(metadata: dict[str, Any], file_hints: list[str]) -> bool
 
     file_name = str(metadata.get("file_name", "")).lower()
     normalized_filename = file_name.replace("-", "").replace("_", "").replace(" ", "")
-    
+
     for file_hint in file_hints:
         # Direct substring match (case-insensitive)
         if file_hint.lower() in file_name:
             return True
         # Normalized match (without separators)
-        normalized_hint = file_hint.lower().replace("-", "").replace("_", "").replace(" ", "")
+        normalized_hint = (
+            file_hint.lower().replace("-", "").replace("_", "").replace(" ", "")
+        )
         if normalized_hint in normalized_filename:
             return True
-    
+
     return False
 
 
@@ -152,7 +184,9 @@ def _normalized_original_file_name(stored_file_name: str) -> str:
     return name.lower()
 
 
-def _matches_required_file(metadata: dict[str, Any], required_file_name: str | None) -> bool:
+def _matches_required_file(
+    metadata: dict[str, Any], required_file_name: str | None
+) -> bool:
     if not required_file_name:
         return True
     stored = str(metadata.get("file_name", ""))
@@ -175,7 +209,9 @@ def _extract_numeric_from_chunk(chunk_text: str, field_name: str) -> float | Non
 def _extract_numeric_facts(chunk_text: str) -> dict[str, float]:
     """Extract numeric facts from patterns like '<Field> is <number>'."""
     facts: dict[str, float] = {}
-    for raw_key, raw_value in re.findall(r"([A-Za-z][A-Za-z0-9_ /()\-]{1,50})\s+is\s+([-+]?\d*\.?\d+)", chunk_text):
+    for raw_key, raw_value in re.findall(
+        r"([A-Za-z][A-Za-z0-9_ /()\-]{1,50})\s+is\s+([-+]?\d*\.?\d+)", chunk_text
+    ):
         key = re.sub(r"\s+", " ", raw_key).strip()
         if not key:
             continue
@@ -198,7 +234,21 @@ def _choose_metric_key(query_text: str, numeric_facts: dict[str, float]) -> str 
     q_tokens = {
         token
         for token in re.findall(r"[a-z]+", q_lower)
-        if token not in {"top", "highest", "lowest", "max", "min", "minimum", "list", "show", "get", "with", "their", "the"}
+        if token
+        not in {
+            "top",
+            "highest",
+            "lowest",
+            "max",
+            "min",
+            "minimum",
+            "list",
+            "show",
+            "get",
+            "with",
+            "their",
+            "the",
+        }
     }
 
     best_key: str | None = None
@@ -266,7 +316,11 @@ class MongoVectorService:
         # Prepare chunk documents with embeddings
         chunks_to_insert = []
         for idx, (text, emb) in enumerate(zip(chunk_texts, embeddings)):
-            chunk_metadata = dict(chunk_metadata_list[idx]) if chunk_metadata_list and idx < len(chunk_metadata_list) else {}
+            chunk_metadata = (
+                dict(chunk_metadata_list[idx])
+                if chunk_metadata_list and idx < len(chunk_metadata_list)
+                else {}
+            )
             chunk_metadata.setdefault("file_name", filename)
             chunk_metadata.setdefault("source_type", file_type)
             chunk_metadata["file_type"] = file_type
@@ -285,7 +339,9 @@ class MongoVectorService:
         # Insert all chunks at once
         chunk_ids = await self.chunks.insert_chunks_batch(document_id, chunks_to_insert)
 
-        logger.info(f"Successfully stored {len(chunk_ids)} chunks for document {document_id}")
+        logger.info(
+            f"Successfully stored {len(chunk_ids)} chunks for document {document_id}"
+        )
 
         return {
             "document_id": str(document_id),
@@ -336,14 +392,21 @@ class MongoVectorService:
 
         exact_hits: list[dict[str, Any]] = []
 
-        logger.debug(f"Query analysis: ids={len(exact_terms['ids'])}, phones={len(exact_terms['phones'])}, names={len(exact_terms['names'])}")
+        logger.debug(
+            f"Query analysis: ids={len(exact_terms['ids'])}, phones={len(exact_terms['phones'])}, names={len(exact_terms['names'])}"
+        )
 
         # ============ FAST PATH: aggregate computation (avg / sum / count) ============
         q_lower = query_text.lower()
         _AGG_KEYWORDS: dict[str, str] = {
-            "average": "avg", "avg": "avg", "mean": "avg",
-            "total": "sum", "sum": "sum",
-            "how many": "count", "number of": "count", "count": "count",
+            "average": "avg",
+            "avg": "avg",
+            "mean": "avg",
+            "total": "sum",
+            "sum": "sum",
+            "how many": "count",
+            "number of": "count",
+            "count": "count",
         }
         asks_aggregate: str | None = None
         for kw, agg_type in _AGG_KEYWORDS.items():
@@ -361,9 +424,19 @@ class MongoVectorService:
             if source_priority:
                 agg_clauses.append({"metadata.source_priority": source_priority})
 
-            agg_filter = {"$and": agg_clauses} if len(agg_clauses) > 1 else (agg_clauses[0] if agg_clauses else {})
-            all_agg_chunks = await self.db[settings.chunks_collection].find(agg_filter).to_list(length=None)
-            logger.info(f"Aggregate fast path: fetched {len(all_agg_chunks)} chunks for '{asks_aggregate}' query")
+            agg_filter = (
+                {"$and": agg_clauses}
+                if len(agg_clauses) > 1
+                else (agg_clauses[0] if agg_clauses else {})
+            )
+            all_agg_chunks = (
+                await self.db[settings.chunks_collection]
+                .find(agg_filter)
+                .to_list(length=None)
+            )
+            logger.info(
+                f"Aggregate fast path: fetched {len(all_agg_chunks)} chunks for '{asks_aggregate}' query"
+            )
 
             key_votes: dict[str, int] = {}
             cached_facts: list[tuple[dict[str, Any], dict[str, float]]] = []
@@ -423,20 +496,46 @@ class MongoVectorService:
                     ]
 
         # ============ FAST PATH: numeric metric ranking in selected file ============
-        asks_metric_rank = any(token in q_lower for token in ["price", "sales", "quantity", "amount", "cost", "revenue", "score", "value", "profit", "discount"]) and any(
-            token in q_lower for token in ["highest", "max", "top", "lowest", "minimum", "min"]
+        asks_metric_rank = any(
+            token in q_lower
+            for token in [
+                "price",
+                "sales",
+                "quantity",
+                "amount",
+                "cost",
+                "revenue",
+                "score",
+                "value",
+                "profit",
+                "discount",
+            ]
+        ) and any(
+            token in q_lower
+            for token in ["highest", "max", "top", "lowest", "minimum", "min"]
         )
         if required_file_name and asks_metric_rank:
             top_match = re.search(r"\btop\s+(\d+)\b", q_lower)
             n = int(top_match.group(1)) if top_match else top_k
             n = max(1, min(n, 20))
 
-            rank_clauses: list[dict[str, Any]] = [required_file_filter] if required_file_filter else []
+            rank_clauses: list[dict[str, Any]] = (
+                [required_file_filter] if required_file_filter else []
+            )
             if source_priority:
                 rank_clauses.append({"metadata.source_priority": source_priority})
 
-            rank_filter = {"$and": rank_clauses} if len(rank_clauses) > 1 else (rank_clauses[0] if rank_clauses else {})
-            candidates = await self.db[settings.chunks_collection].find(rank_filter).limit(5000).to_list(length=5000)
+            rank_filter = (
+                {"$and": rank_clauses}
+                if len(rank_clauses) > 1
+                else (rank_clauses[0] if rank_clauses else {})
+            )
+            candidates = (
+                await self.db[settings.chunks_collection]
+                .find(rank_filter)
+                .limit(5000)
+                .to_list(length=5000)
+            )
 
             key_votes: dict[str, int] = {}
             cached_facts: list[tuple[dict[str, Any], dict[str, float]]] = []
@@ -450,7 +549,9 @@ class MongoVectorService:
                     norm = _normalize_metric_key(chosen)
                     key_votes[norm] = key_votes.get(norm, 0) + 1
 
-            chosen_metric_norm = max(key_votes.items(), key=lambda kv: kv[1])[0] if key_votes else None
+            chosen_metric_norm = (
+                max(key_votes.items(), key=lambda kv: kv[1])[0] if key_votes else None
+            )
             scored_rows: list[tuple[float, dict[str, Any]]] = []
             for row, facts in cached_facts:
                 metric_value: float | None = None
@@ -468,7 +569,9 @@ class MongoVectorService:
                 scored_rows.append((metric_value, row))
 
             if scored_rows:
-                wants_lowest = any(token in q_lower for token in ["lowest", "minimum", "min"])
+                wants_lowest = any(
+                    token in q_lower for token in ["lowest", "minimum", "min"]
+                )
                 scored_rows.sort(key=lambda item: item[0], reverse=not wants_lowest)
                 picked = [row for _, row in scored_rows[:n]]
 
@@ -481,7 +584,9 @@ class MongoVectorService:
                         "similarity_score": 0.99,
                         "metadata": {
                             **match.get("metadata", {}),
-                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
+                            "file_name": match.get("metadata", {}).get(
+                                "file_name", match.get("source", "unknown")
+                            ),
                             "source_type": match.get("metadata", {}).get(
                                 "source_type",
                                 match.get("metadata", {}).get("file_type", "unknown"),
@@ -505,25 +610,40 @@ class MongoVectorService:
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
-                query_filter = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
-                matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+                query_filter = (
+                    {"$and": query_clauses}
+                    if len(query_clauses) > 1
+                    else query_clauses[0]
+                )
+                matches = (
+                    await self.db[settings.chunks_collection]
+                    .find(query_filter)
+                    .limit(top_k)
+                    .to_list(length=top_k)
+                )
 
                 for match in matches:
-                    exact_hits.append({
-                        "chunk_text": match.get("chunk_text", ""),
-                        "source": match.get("source", "unknown"),
-                        "document_id": str(match.get("document_id", "")),
-                        "chunk_index": match.get("chunk_index", 0),
-                        "similarity_score": 1.0,
-                        "metadata": {
-                            **match.get("metadata", {}),
-                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                            "source_type": match.get("metadata", {}).get(
-                                "source_type",
-                                match.get("metadata", {}).get("file_type", "unknown"),
-                            ),
-                        },
-                    })
+                    exact_hits.append(
+                        {
+                            "chunk_text": match.get("chunk_text", ""),
+                            "source": match.get("source", "unknown"),
+                            "document_id": str(match.get("document_id", "")),
+                            "chunk_index": match.get("chunk_index", 0),
+                            "similarity_score": 1.0,
+                            "metadata": {
+                                **match.get("metadata", {}),
+                                "file_name": match.get("metadata", {}).get(
+                                    "file_name", match.get("source", "unknown")
+                                ),
+                                "source_type": match.get("metadata", {}).get(
+                                    "source_type",
+                                    match.get("metadata", {}).get(
+                                        "file_type", "unknown"
+                                    ),
+                                ),
+                            },
+                        }
+                    )
 
                 if exact_hits:
                     break
@@ -542,25 +662,40 @@ class MongoVectorService:
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
-                query_filter = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
-                matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+                query_filter = (
+                    {"$and": query_clauses}
+                    if len(query_clauses) > 1
+                    else query_clauses[0]
+                )
+                matches = (
+                    await self.db[settings.chunks_collection]
+                    .find(query_filter)
+                    .limit(top_k)
+                    .to_list(length=top_k)
+                )
 
                 for match in matches:
-                    exact_hits.append({
-                        "chunk_text": match.get("chunk_text", ""),
-                        "source": match.get("source", "unknown"),
-                        "document_id": str(match.get("document_id", "")),
-                        "chunk_index": match.get("chunk_index", 0),
-                        "similarity_score": 0.995,
-                        "metadata": {
-                            **match.get("metadata", {}),
-                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                            "source_type": match.get("metadata", {}).get(
-                                "source_type",
-                                match.get("metadata", {}).get("file_type", "unknown"),
-                            ),
-                        },
-                    })
+                    exact_hits.append(
+                        {
+                            "chunk_text": match.get("chunk_text", ""),
+                            "source": match.get("source", "unknown"),
+                            "document_id": str(match.get("document_id", "")),
+                            "chunk_index": match.get("chunk_index", 0),
+                            "similarity_score": 0.995,
+                            "metadata": {
+                                **match.get("metadata", {}),
+                                "file_name": match.get("metadata", {}).get(
+                                    "file_name", match.get("source", "unknown")
+                                ),
+                                "source_type": match.get("metadata", {}).get(
+                                    "source_type",
+                                    match.get("metadata", {}).get(
+                                        "file_type", "unknown"
+                                    ),
+                                ),
+                            },
+                        }
+                    )
 
                 if exact_hits:
                     break
@@ -580,29 +715,42 @@ class MongoVectorService:
                     if required_file_filter:
                         query_clauses.append(required_file_filter)
                     if source_priority:
-                        query_clauses.append({"metadata.source_priority": source_priority})
+                        query_clauses.append(
+                            {"metadata.source_priority": source_priority}
+                        )
 
                     query_filter = {"$and": query_clauses}
 
-                    matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+                    matches = (
+                        await self.db[settings.chunks_collection]
+                        .find(query_filter)
+                        .limit(top_k)
+                        .to_list(length=top_k)
+                    )
                     logger.debug(f"Found {len(matches)} records with {name}+{phone}")
 
                     for match in matches:
-                        exact_hits.append({
-                            "chunk_text": match.get("chunk_text", ""),
-                            "source": match.get("source", "unknown"),
-                            "document_id": str(match.get("document_id", "")),
-                            "chunk_index": match.get("chunk_index", 0),
-                            "similarity_score": 0.99,  # Highest confidence
-                            "metadata": {
-                                **match.get("metadata", {}),
-                                "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                                "source_type": match.get("metadata", {}).get(
-                                    "source_type",
-                                    match.get("metadata", {}).get("file_type", "unknown"),
-                                ),
-                            },
-                        })
+                        exact_hits.append(
+                            {
+                                "chunk_text": match.get("chunk_text", ""),
+                                "source": match.get("source", "unknown"),
+                                "document_id": str(match.get("document_id", "")),
+                                "chunk_index": match.get("chunk_index", 0),
+                                "similarity_score": 0.99,  # Highest confidence
+                                "metadata": {
+                                    **match.get("metadata", {}),
+                                    "file_name": match.get("metadata", {}).get(
+                                        "file_name", match.get("source", "unknown")
+                                    ),
+                                    "source_type": match.get("metadata", {}).get(
+                                        "source_type",
+                                        match.get("metadata", {}).get(
+                                            "file_type", "unknown"
+                                        ),
+                                    ),
+                                },
+                            }
+                        )
 
                     if exact_hits:
                         break
@@ -623,27 +771,42 @@ class MongoVectorService:
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
-                query_filter = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
+                query_filter = (
+                    {"$and": query_clauses}
+                    if len(query_clauses) > 1
+                    else query_clauses[0]
+                )
 
-                matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+                matches = (
+                    await self.db[settings.chunks_collection]
+                    .find(query_filter)
+                    .limit(top_k)
+                    .to_list(length=top_k)
+                )
                 logger.debug(f"Found {len(matches)} records with name {name}")
 
                 for match in matches:
-                    exact_hits.append({
-                        "chunk_text": match.get("chunk_text", ""),
-                        "source": match.get("source", "unknown"),
-                        "document_id": str(match.get("document_id", "")),
-                        "chunk_index": match.get("chunk_index", 0),
-                        "similarity_score": 0.95,
-                        "metadata": {
-                            **match.get("metadata", {}),
-                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                            "source_type": match.get("metadata", {}).get(
-                                "source_type",
-                                match.get("metadata", {}).get("file_type", "unknown"),
-                            ),
-                        },
-                    })
+                    exact_hits.append(
+                        {
+                            "chunk_text": match.get("chunk_text", ""),
+                            "source": match.get("source", "unknown"),
+                            "document_id": str(match.get("document_id", "")),
+                            "chunk_index": match.get("chunk_index", 0),
+                            "similarity_score": 0.95,
+                            "metadata": {
+                                **match.get("metadata", {}),
+                                "file_name": match.get("metadata", {}).get(
+                                    "file_name", match.get("source", "unknown")
+                                ),
+                                "source_type": match.get("metadata", {}).get(
+                                    "source_type",
+                                    match.get("metadata", {}).get(
+                                        "file_type", "unknown"
+                                    ),
+                                ),
+                            },
+                        }
+                    )
 
                 if exact_hits:
                     break
@@ -662,27 +825,42 @@ class MongoVectorService:
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
-                query_filter = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
+                query_filter = (
+                    {"$and": query_clauses}
+                    if len(query_clauses) > 1
+                    else query_clauses[0]
+                )
 
-                matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+                matches = (
+                    await self.db[settings.chunks_collection]
+                    .find(query_filter)
+                    .limit(top_k)
+                    .to_list(length=top_k)
+                )
                 logger.debug(f"Found {len(matches)} records with ID {term_id}")
 
                 for match in matches:
-                    exact_hits.append({
-                        "chunk_text": match.get("chunk_text", ""),
-                        "source": match.get("source", "unknown"),
-                        "document_id": str(match.get("document_id", "")),
-                        "chunk_index": match.get("chunk_index", 0),
-                        "similarity_score": 0.99,
-                        "metadata": {
-                            **match.get("metadata", {}),
-                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                            "source_type": match.get("metadata", {}).get(
-                                "source_type",
-                                match.get("metadata", {}).get("file_type", "unknown"),
-                            ),
-                        },
-                    })
+                    exact_hits.append(
+                        {
+                            "chunk_text": match.get("chunk_text", ""),
+                            "source": match.get("source", "unknown"),
+                            "document_id": str(match.get("document_id", "")),
+                            "chunk_index": match.get("chunk_index", 0),
+                            "similarity_score": 0.99,
+                            "metadata": {
+                                **match.get("metadata", {}),
+                                "file_name": match.get("metadata", {}).get(
+                                    "file_name", match.get("source", "unknown")
+                                ),
+                                "source_type": match.get("metadata", {}).get(
+                                    "source_type",
+                                    match.get("metadata", {}).get(
+                                        "file_type", "unknown"
+                                    ),
+                                ),
+                            },
+                        }
+                    )
 
                 if exact_hits:
                     break
@@ -702,64 +880,105 @@ class MongoVectorService:
                 if source_priority:
                     query_clauses.append({"metadata.source_priority": source_priority})
 
-                query_filter = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
+                query_filter = (
+                    {"$and": query_clauses}
+                    if len(query_clauses) > 1
+                    else query_clauses[0]
+                )
 
-                matches = await self.db[settings.chunks_collection].find(query_filter).limit(top_k).to_list(length=top_k)
+                matches = (
+                    await self.db[settings.chunks_collection]
+                    .find(query_filter)
+                    .limit(top_k)
+                    .to_list(length=top_k)
+                )
                 logger.debug(f"Found {len(matches)} records with exact phone {phone}")
 
                 for match in matches:
-                    exact_hits.append({
-                        "chunk_text": match.get("chunk_text", ""),
-                        "source": match.get("source", "unknown"),
-                        "document_id": str(match.get("document_id", "")),
-                        "chunk_index": match.get("chunk_index", 0),
-                        "similarity_score": 0.98,
-                        "metadata": {
-                            **match.get("metadata", {}),
-                            "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                            "source_type": match.get("metadata", {}).get(
-                                "source_type",
-                                match.get("metadata", {}).get("file_type", "unknown"),
-                            ),
-                        },
-                    })
+                    exact_hits.append(
+                        {
+                            "chunk_text": match.get("chunk_text", ""),
+                            "source": match.get("source", "unknown"),
+                            "document_id": str(match.get("document_id", "")),
+                            "chunk_index": match.get("chunk_index", 0),
+                            "similarity_score": 0.98,
+                            "metadata": {
+                                **match.get("metadata", {}),
+                                "file_name": match.get("metadata", {}).get(
+                                    "file_name", match.get("source", "unknown")
+                                ),
+                                "source_type": match.get("metadata", {}).get(
+                                    "source_type",
+                                    match.get("metadata", {}).get(
+                                        "file_type", "unknown"
+                                    ),
+                                ),
+                            },
+                        }
+                    )
 
                 # Separator-tolerant matching if no exact matches
                 if not matches:
                     digits_only = re.sub(r"\D", "", phone)
                     if len(digits_only) >= 7:
-                        tolerant_pattern = "\\D*".join(re.escape(ch) for ch in digits_only)
+                        tolerant_pattern = "\\D*".join(
+                            re.escape(ch) for ch in digits_only
+                        )
                         tolerant_clauses: list[dict[str, Any]] = [
-                            {"chunk_text": {"$regex": tolerant_pattern, "$options": "i"}},
+                            {
+                                "chunk_text": {
+                                    "$regex": tolerant_pattern,
+                                    "$options": "i",
+                                }
+                            },
                         ]
                         if file_hint_filter:
                             tolerant_clauses.append(file_hint_filter)
                         if required_file_filter:
                             tolerant_clauses.append(required_file_filter)
                         if source_priority:
-                            tolerant_clauses.append({"metadata.source_priority": source_priority})
+                            tolerant_clauses.append(
+                                {"metadata.source_priority": source_priority}
+                            )
 
-                        tolerant_filter = {"$and": tolerant_clauses} if len(tolerant_clauses) > 1 else tolerant_clauses[0]
+                        tolerant_filter = (
+                            {"$and": tolerant_clauses}
+                            if len(tolerant_clauses) > 1
+                            else tolerant_clauses[0]
+                        )
 
-                        matches = await self.db[settings.chunks_collection].find(tolerant_filter).limit(top_k).to_list(length=top_k)
-                        logger.debug(f"Found {len(matches)} records with tolerant phone match")
+                        matches = (
+                            await self.db[settings.chunks_collection]
+                            .find(tolerant_filter)
+                            .limit(top_k)
+                            .to_list(length=top_k)
+                        )
+                        logger.debug(
+                            f"Found {len(matches)} records with tolerant phone match"
+                        )
 
                         for match in matches:
-                            exact_hits.append({
-                                "chunk_text": match.get("chunk_text", ""),
-                                "source": match.get("source", "unknown"),
-                                "document_id": str(match.get("document_id", "")),
-                                "chunk_index": match.get("chunk_index", 0),
-                                "similarity_score": 0.97,
-                                "metadata": {
-                                    **match.get("metadata", {}),
-                                    "file_name": match.get("metadata", {}).get("file_name", match.get("source", "unknown")),
-                                    "source_type": match.get("metadata", {}).get(
-                                        "source_type",
-                                        match.get("metadata", {}).get("file_type", "unknown"),
-                                    ),
-                                },
-                            })
+                            exact_hits.append(
+                                {
+                                    "chunk_text": match.get("chunk_text", ""),
+                                    "source": match.get("source", "unknown"),
+                                    "document_id": str(match.get("document_id", "")),
+                                    "chunk_index": match.get("chunk_index", 0),
+                                    "similarity_score": 0.97,
+                                    "metadata": {
+                                        **match.get("metadata", {}),
+                                        "file_name": match.get("metadata", {}).get(
+                                            "file_name", match.get("source", "unknown")
+                                        ),
+                                        "source_type": match.get("metadata", {}).get(
+                                            "source_type",
+                                            match.get("metadata", {}).get(
+                                                "file_type", "unknown"
+                                            ),
+                                        ),
+                                    },
+                                }
+                            )
 
                 if exact_hits:
                     break
@@ -792,23 +1011,32 @@ class MongoVectorService:
             results = [
                 result
                 for result in results
-                if _matches_required_file(result.get("metadata", {}), required_file_name)
+                if _matches_required_file(
+                    result.get("metadata", {}), required_file_name
+                )
             ]
 
         # Handle file hint filtering with fallback if no matches
         if exact_terms["file_hints"]:
             file_filtered_results = [
-                result for result in results
-                if _matches_file_hints(result.get("metadata", {}), exact_terms["file_hints"])
+                result
+                for result in results
+                if _matches_file_hints(
+                    result.get("metadata", {}), exact_terms["file_hints"]
+                )
             ]
-            
+
             # If semantic search found results but file hints filtered them all out,
             # it means user mentioned a file that doesn't exist - ask them which one they meant
             if results and not file_filtered_results and not required_file_name:
-                logger.warning(f"File hints {exact_terms['file_hints']} didn't match any results. Fetching available files.")
-                available_files = await self.db[settings.chunks_collection].distinct("metadata.file_name")
+                logger.warning(
+                    f"File hints {exact_terms['file_hints']} didn't match any results. Fetching available files."
+                )
+                available_files = await self.db[settings.chunks_collection].distinct(
+                    "metadata.file_name"
+                )
                 available_files = [f for f in available_files if f and f != "unknown"]
-                
+
                 error_msg = (
                     f"I couldn't find a file matching '{', '.join(exact_terms['file_hints'])}'. "
                     f"Available files are: {', '.join(available_files)}. "
@@ -816,7 +1044,7 @@ class MongoVectorService:
                 )
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            
+
             if file_filtered_results:
                 results = file_filtered_results
 
@@ -832,7 +1060,9 @@ class MongoVectorService:
                 "similarity_score": result.get("similarity_score", 0.0),
                 "metadata": {
                     **result.get("metadata", {}),
-                    "file_name": result.get("metadata", {}).get("file_name", result.get("source", "unknown")),
+                    "file_name": result.get("metadata", {}).get(
+                        "file_name", result.get("source", "unknown")
+                    ),
                     "source_type": result.get("metadata", {}).get(
                         "source_type",
                         result.get("metadata", {}).get("file_type", "unknown"),
@@ -908,8 +1138,12 @@ class MongoVectorService:
         """Get vector store statistics."""
         chunks_collection = self.db[settings.chunks_collection]
         total_chunks = await chunks_collection.count_documents({})
-        primary = await chunks_collection.count_documents({"metadata.source_priority": "primary"})
-        secondary = await chunks_collection.count_documents({"metadata.source_priority": "secondary"})
+        primary = await chunks_collection.count_documents(
+            {"metadata.source_priority": "primary"}
+        )
+        secondary = await chunks_collection.count_documents(
+            {"metadata.source_priority": "secondary"}
+        )
         unique_files = await chunks_collection.distinct("metadata.file_name")
 
         return {

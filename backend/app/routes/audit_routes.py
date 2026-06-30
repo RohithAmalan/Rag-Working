@@ -23,9 +23,10 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
+
 class AuditLogRequest(BaseModel):
     event: str
-    severity: str = "info"          # info | warning | critical
+    severity: str = "info"  # info | warning | critical
     username: str = "system"
     details: Optional[Any] = None
     source: str = "n8n-workflow-03"
@@ -43,16 +44,18 @@ class AuditAlertRequest(BaseModel):
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+
 @router.post("/log", summary="Write an audit event to MongoDB")
 async def audit_log(
     payload: AuditLogRequest,
-    _current_user: dict = Depends(get_current_user),   # requires valid token
+    _current_user: dict = Depends(get_current_user),  # requires valid token
 ):
     """
     Called by n8n Workflow 03 for EVERY incoming RAG event.
@@ -73,7 +76,9 @@ async def audit_log(
         result = await db["audit_events"].insert_one(doc)
         logger.info(
             "Audit event logged: %s [%s] by %s",
-            payload.event, payload.severity, payload.username
+            payload.event,
+            payload.severity,
+            payload.username,
         )
         return {
             "status": "logged",
@@ -89,7 +94,7 @@ async def audit_log(
 @router.post("/alert", summary="Write a critical/warning alert to MongoDB")
 async def audit_alert(
     payload: AuditAlertRequest,
-    _current_user: dict = Depends(get_current_user),   # requires valid token
+    _current_user: dict = Depends(get_current_user),  # requires valid token
 ):
     """
     Called by n8n Workflow 03 only when severity >= warning.
@@ -110,7 +115,9 @@ async def audit_alert(
         result = await db["audit_alerts"].insert_one(doc)
         logger.warning(
             "AUDIT ALERT: %s [%s] — %s",
-            payload.event, payload.severity, payload.message[:100]
+            payload.event,
+            payload.severity,
+            payload.message[:100],
         )
         return {
             "status": "alert_logged",
@@ -126,14 +133,14 @@ async def audit_alert(
 @router.get("/events", summary="List recent audit events (admin only)")
 async def list_audit_events(
     limit: int = 50,
-    _admin: dict = Depends(require_admin),             # requires admin role
+    _admin: dict = Depends(require_admin),  # requires admin role
 ):
     """Returns the most recent audit events from MongoDB. Requires: admin role."""
     try:
         db = get_database()
-        cursor = db["audit_events"].find(
-            {}, {"_id": 0}
-        ).sort("logged_at", -1).limit(limit)
+        cursor = (
+            db["audit_events"].find({}, {"_id": 0}).sort("logged_at", -1).limit(limit)
+        )
         events = await cursor.to_list(length=limit)
         return {"count": len(events), "events": events}
     except Exception as exc:
@@ -143,14 +150,14 @@ async def list_audit_events(
 @router.get("/alerts", summary="List recent critical/warning alerts (admin only)")
 async def list_audit_alerts(
     limit: int = 20,
-    _admin: dict = Depends(require_admin),             # requires admin role
+    _admin: dict = Depends(require_admin),  # requires admin role
 ):
     """Returns the most recent critical/warning alerts from MongoDB. Requires: admin role."""
     try:
         db = get_database()
-        cursor = db["audit_alerts"].find(
-            {}, {"_id": 0}
-        ).sort("logged_at", -1).limit(limit)
+        cursor = (
+            db["audit_alerts"].find({}, {"_id": 0}).sort("logged_at", -1).limit(limit)
+        )
         alerts = await cursor.to_list(length=limit)
         return {"count": len(alerts), "alerts": alerts}
     except Exception as exc:

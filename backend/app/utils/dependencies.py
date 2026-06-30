@@ -54,7 +54,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return _legacy_user_dict(username)
 
 
-async def require_role(required_role: str, user: dict = Depends(get_current_user)) -> dict:
+async def require_role(
+    required_role: str, user: dict = Depends(get_current_user)
+) -> dict:
     """
     Dependency to check if user has a specific role.
 
@@ -65,13 +67,19 @@ async def require_role(required_role: str, user: dict = Depends(get_current_user
     if required_role not in user_roles:
         logger.warning(
             "User %s denied: requires %s, has %s",
-            user.get("username"), required_role, user_roles,
+            user.get("username"),
+            required_role,
+            user_roles,
         )
-        raise HTTPException(status_code=403, detail=f"Access denied: requires {required_role} role")
+        raise HTTPException(
+            status_code=403, detail=f"Access denied: requires {required_role} role"
+        )
     return user
 
 
-async def require_any_role(required_roles: List[str], user: dict = Depends(get_current_user)) -> dict:
+async def require_any_role(
+    required_roles: List[str], user: dict = Depends(get_current_user)
+) -> dict:
     """
     Dependency to check if user has any of the required roles.
 
@@ -82,7 +90,9 @@ async def require_any_role(required_roles: List[str], user: dict = Depends(get_c
     if not any(role in user_roles for role in required_roles):
         logger.warning(
             "User %s denied: requires one of %s, has %s",
-            user.get("username"), required_roles, user_roles,
+            user.get("username"),
+            required_roles,
+            user_roles,
         )
         raise HTTPException(
             status_code=403,
@@ -119,7 +129,9 @@ async def require_user(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
-async def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+async def get_current_user_optional(
+    authorization: Optional[str] = Header(None),
+) -> Optional[dict]:
     """
     Extract user info if token is present, but don't require it.
     Useful for endpoints that behave differently based on auth state.

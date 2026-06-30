@@ -39,12 +39,25 @@ export default function App({ keycloak }) {
     minio: { enabled: false, connected: false, endpoint: "", bucket: "" },
   });
 
-  const normalizeDocuments = useCallback((data) => ({
-    total_chunks: data?.total_chunks ?? 0,
-    primary_chunks: data?.total_documents ?? 0, // Use total_documents as fallback
-    secondary_chunks: 0, // Backend doesn't track this separately
-    documents: Array.isArray(data?.documents) ? data.documents : [],
-  }), []);
+  const normalizeDocuments = useCallback((data) => {
+    const rawDocs = Array.isArray(data?.documents) ? data.documents : [];
+    // Deduplicate by file_name on the frontend to ensure clean UI
+    const uniqueDocs = [];
+    const seenFiles = new Set();
+    for (const doc of rawDocs) {
+      if (!seenFiles.has(doc.file_name)) {
+        seenFiles.add(doc.file_name);
+        uniqueDocs.push(doc);
+      }
+    }
+    
+    return {
+      total_chunks: data?.total_chunks ?? 0,
+      primary_chunks: data?.total_documents ?? 0, // Use total_documents as fallback
+      secondary_chunks: 0, // Backend doesn't track this separately
+      documents: uniqueDocs,
+    };
+  }, []);
 
   const loadDocuments = useCallback(async () => {
     try {

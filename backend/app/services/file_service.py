@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pandas as pd
@@ -70,7 +70,11 @@ class FileService:
         for old_col, first_val in zip(cols, first_row):
             if old_col.lower().startswith("unnamed:"):
                 # Accept likely header text only.
-                if first_val and first_val.lower() != "nan" and not first_val.replace(".", "", 1).isdigit():
+                if (
+                    first_val
+                    and first_val.lower() != "nan"
+                    and not first_val.replace(".", "", 1).isdigit()
+                ):
                     candidate_cols.append(first_val)
                     replaced += 1
                 else:
@@ -106,7 +110,9 @@ class FileService:
             score = sum(
                 1
                 for v in row_vals
-                if isinstance(v, str) and v.strip() and not v.strip().lstrip("-").replace(".", "").isdigit()
+                if isinstance(v, str)
+                and v.strip()
+                and not v.strip().lstrip("-").replace(".", "").isdigit()
             )
             if score > best_score:
                 best_score = score
@@ -135,13 +141,19 @@ class FileService:
         for sheet_name, df_raw in sheets_raw.items():
             header_row = FileService._detect_header_row(df_raw)
             if header_row == 0:
-                result[sheet_name] = FileService._promote_first_row_as_header_if_needed(df_raw)
+                result[sheet_name] = FileService._promote_first_row_as_header_if_needed(
+                    df_raw
+                )
             else:
                 # df_raw was read with header=0, so df_raw.iloc[N] = file row N+1
                 # To re-read with the correct header row, use header_row + 1
-                df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row + 1)
+                df = pd.read_excel(
+                    file_path, sheet_name=sheet_name, header=header_row + 1
+                )
                 df = df.dropna(how="all").reset_index(drop=True)
-                result[sheet_name] = FileService._promote_first_row_as_header_if_needed(df)
+                result[sheet_name] = FileService._promote_first_row_as_header_if_needed(
+                    df
+                )
         return result
 
     def process_file(self, file_path: Path) -> list[dict[str, Any]]:
@@ -157,7 +169,9 @@ class FileService:
             sheets = self._read_excel_smart(file_path)
             for sheet_name, sheet_df in sheets.items():
                 all_docs.extend(
-                    dataframe_to_documents(sheet_df, file_path.name, "excel", sheet_name=str(sheet_name))
+                    dataframe_to_documents(
+                        sheet_df, file_path.name, "excel", sheet_name=str(sheet_name)
+                    )
                 )
             return all_docs
 
@@ -168,7 +182,9 @@ class FileService:
                 extracted = page.extract_text() or ""
                 if extracted.strip():
                     page_texts.append(extracted)
-            return chunk_pdf_texts(file_path.name, page_texts, self.chunk_size, self.chunk_overlap)
+            return chunk_pdf_texts(
+                file_path.name, page_texts, self.chunk_size, self.chunk_overlap
+            )
 
         raise ValueError(f"Unsupported file type: {suffix}")
 
@@ -192,7 +208,9 @@ class FileService:
 
         if suffix == ".csv":
             df = self._read_csv_smart(file_path)
-            numeric_df = df.select_dtypes(include=["number"]) if not df.empty else pd.DataFrame()
+            numeric_df = (
+                df.select_dtypes(include=["number"]) if not df.empty else pd.DataFrame()
+            )
             numeric = numeric_df.describe().to_dict() if not numeric_df.empty else {}
             report.update(
                 {
@@ -200,10 +218,17 @@ class FileService:
                     "row_count": int(len(df)),
                     "column_count": int(len(df.columns)),
                     "column_names": [str(col) for col in df.columns],
-                    "missing_values": {str(k): int(v) for k, v in df.isna().sum().to_dict().items()},
-                    "sample_rows": df.head(3).fillna("unknown").to_dict(orient="records"),
+                    "missing_values": {
+                        str(k): int(v) for k, v in df.isna().sum().to_dict().items()
+                    },
+                    "sample_rows": df.head(3)
+                    .fillna("unknown")
+                    .to_dict(orient="records"),
                     "numeric_summary": {
-                        str(col): {str(metric): self._normalize_report_value(val) for metric, val in values.items()}
+                        str(col): {
+                            str(metric): self._normalize_report_value(val)
+                            for metric, val in values.items()
+                        }
                         for col, values in numeric.items()
                     },
                 }
@@ -214,33 +239,46 @@ class FileService:
             sheets = self._read_excel_smart(file_path)
             sheet_reports: list[dict[str, Any]] = []
             total_rows = 0
-            
+
             # Extract details from first sheet (primary analysis)
             first_sheet_df = None
             first_sheet_name = None
             numeric_summary_primary = {}
-            
+
             for sheet_name, df in sheets.items():
                 total_rows += int(len(df))
-                
+
                 # Capture first sheet for root-level details
                 if first_sheet_df is None:
                     first_sheet_df = df
                     first_sheet_name = sheet_name
-                    numeric_df = df.select_dtypes(include=["number"]) if not df.empty else pd.DataFrame()
-                    numeric = numeric_df.describe().to_dict() if not numeric_df.empty else {}
+                    numeric_df = (
+                        df.select_dtypes(include=["number"])
+                        if not df.empty
+                        else pd.DataFrame()
+                    )
+                    numeric = (
+                        numeric_df.describe().to_dict() if not numeric_df.empty else {}
+                    )
                     numeric_summary_primary = {
-                        str(col): {str(metric): self._normalize_report_value(val) for metric, val in values.items()}
+                        str(col): {
+                            str(metric): self._normalize_report_value(val)
+                            for metric, val in values.items()
+                        }
                         for col, values in numeric.items()
                     }
-                
+
                 sheet_reports.append(
                     {
                         "sheet_name": str(sheet_name),
                         "row_count": int(len(df)),
                         "column_count": int(len(df.columns)),
                         "column_names": [str(col) for col in df.columns],
-                        "sample_rows": df.head(2).fillna("unknown").to_dict(orient="records") if not df.empty else [],
+                        "sample_rows": (
+                            df.head(2).fillna("unknown").to_dict(orient="records")
+                            if not df.empty
+                            else []
+                        ),
                     }
                 )
 
@@ -251,9 +289,23 @@ class FileService:
                     "sheet_count": len(sheets),
                     "sheet_reports": sheet_reports,
                     "row_count": total_rows,
-                    "column_names": [str(col) for col in first_sheet_df.columns] if first_sheet_df is not None else [],
-                    "column_count": int(len(first_sheet_df.columns)) if first_sheet_df is not None else 0,
-                    "sample_rows": first_sheet_df.head(3).fillna("unknown").to_dict(orient="records") if first_sheet_df is not None and not first_sheet_df.empty else [],
+                    "column_names": (
+                        [str(col) for col in first_sheet_df.columns]
+                        if first_sheet_df is not None
+                        else []
+                    ),
+                    "column_count": (
+                        int(len(first_sheet_df.columns))
+                        if first_sheet_df is not None
+                        else 0
+                    ),
+                    "sample_rows": (
+                        first_sheet_df.head(3)
+                        .fillna("unknown")
+                        .to_dict(orient="records")
+                        if first_sheet_df is not None and not first_sheet_df.empty
+                        else []
+                    ),
                     "numeric_summary": numeric_summary_primary,
                 }
             )
@@ -283,27 +335,27 @@ class FileService:
         sheet_name: str | None = None,
     ) -> dict[str, Any]:
         """Get paginated file data preview for dashboard display.
-        
+
         Args:
             file_path: Path to the file
             page: Page number (1-indexed)
             page_size: Number of rows per page
             sheet_name: Excel sheet name (None = first sheet)
-            
+
         Returns:
             Dictionary with columns, rows, total_rows, current_page, total_pages
         """
         suffix = file_path.suffix.lower()
-        
+
         if suffix == ".csv":
             df = self._read_csv_smart(file_path)
             total_rows = len(df)
             total_pages = (total_rows + page_size - 1) // page_size
-            
+
             start_idx = (page - 1) * page_size
             end_idx = start_idx + page_size
             page_df = df.iloc[start_idx:end_idx]
-            
+
             return {
                 "file_type": "csv",
                 "columns": [str(col) for col in df.columns],
@@ -313,10 +365,10 @@ class FileService:
                 "total_pages": total_pages,
                 "page_size": page_size,
             }
-        
+
         elif suffix == ".xlsx":
             sheets = self._read_excel_smart(file_path)
-            
+
             # Use specified sheet or first sheet
             if sheet_name and sheet_name in sheets:
                 df = sheets[sheet_name]
@@ -324,14 +376,14 @@ class FileService:
             else:
                 selected_sheet = list(sheets.keys())[0]
                 df = sheets[selected_sheet]
-            
+
             total_rows = len(df)
             total_pages = (total_rows + page_size - 1) // page_size
-            
+
             start_idx = (page - 1) * page_size
             end_idx = start_idx + page_size
             page_df = df.iloc[start_idx:end_idx]
-            
+
             return {
                 "file_type": "excel",
                 "sheet_names": list(sheets.keys()),
@@ -343,23 +395,25 @@ class FileService:
                 "total_pages": total_pages,
                 "page_size": page_size,
             }
-        
+
         elif suffix == ".pdf":
             # For PDFs, return text content paginated by pages
             reader = PdfReader(str(file_path))
             total_pages = len(reader.pages)
-            
+
             start_page = (page - 1) * page_size
             end_page = min(start_page + page_size, total_pages)
-            
+
             pages_content = []
             for i in range(start_page, end_page):
                 text = reader.pages[i].extract_text() or ""
-                pages_content.append({
-                    "page_number": i + 1,
-                    "content": text.strip(),
-                })
-            
+                pages_content.append(
+                    {
+                        "page_number": i + 1,
+                        "content": text.strip(),
+                    }
+                )
+
             return {
                 "file_type": "pdf",
                 "pages": pages_content,
@@ -367,7 +421,7 @@ class FileService:
                 "current_page": page,
                 "page_size": page_size,
             }
-        
+
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
 
@@ -377,23 +431,23 @@ class FileService:
         sheet_name: str | None = None,
     ) -> dict[str, Any]:
         """Generate analytics and statistics for charts/graphs.
-        
+
         Args:
             file_path: Path to the file
             sheet_name: Excel sheet name (None = first sheet)
-            
+
         Returns:
             Dictionary with analytics data for visualization
         """
         suffix = file_path.suffix.lower()
-        
+
         if suffix == ".csv":
             df = self._read_csv_smart(file_path)
             return self._generate_dataframe_analytics(df, file_path.name)
-        
+
         elif suffix == ".xlsx":
             sheets = self._read_excel_smart(file_path)
-            
+
             # Use specified sheet or first sheet
             if sheet_name and sheet_name in sheets:
                 df = sheets[sheet_name]
@@ -401,12 +455,12 @@ class FileService:
             else:
                 selected_sheet = list(sheets.keys())[0]
                 df = sheets[selected_sheet]
-            
+
             analytics = self._generate_dataframe_analytics(df, file_path.name)
             analytics["sheet_names"] = list(sheets.keys())
             analytics["selected_sheet"] = selected_sheet
             return analytics
-        
+
         elif suffix == ".pdf":
             # For PDFs, return basic statistics
             reader = PdfReader(str(file_path))
@@ -414,15 +468,19 @@ class FileService:
                 "file_type": "pdf",
                 "file_name": file_path.name,
                 "total_pages": len(reader.pages),
-                "pages_with_text": len([p for p in reader.pages if (p.extract_text() or "").strip()]),
+                "pages_with_text": len(
+                    [p for p in reader.pages if (p.extract_text() or "").strip()]
+                ),
                 "analytics_available": False,
             }
-        
+
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
 
     @staticmethod
-    def _generate_dataframe_analytics(df: pd.DataFrame, file_name: str) -> dict[str, Any]:
+    def _generate_dataframe_analytics(
+        df: pd.DataFrame, file_name: str
+    ) -> dict[str, Any]:
         """Generate analytics from a DataFrame for visualization."""
         analytics = {
             "file_type": "tabular",
@@ -437,12 +495,12 @@ class FileService:
             "column_stats": {},
             "top_values": {},
         }
-        
+
         # Identify column types
         for col in df.columns:
             col_str = str(col)
             dtype = df[col].dtype
-            
+
             if pd.api.types.is_numeric_dtype(dtype):
                 analytics["numeric_columns"].append(col_str)
                 # Generate statistics for numeric columns
@@ -450,7 +508,9 @@ class FileService:
                     "min": float(df[col].min()) if not pd.isna(df[col].min()) else 0,
                     "max": float(df[col].max()) if not pd.isna(df[col].max()) else 0,
                     "mean": float(df[col].mean()) if not pd.isna(df[col].mean()) else 0,
-                    "median": float(df[col].median()) if not pd.isna(df[col].median()) else 0,
+                    "median": (
+                        float(df[col].median()) if not pd.isna(df[col].median()) else 0
+                    ),
                     "std": float(df[col].std()) if not pd.isna(df[col].std()) else 0,
                     "count": int(df[col].count()),
                 }
@@ -461,18 +521,19 @@ class FileService:
                 # Get top 10 values for categorical columns
                 value_counts = df[col].value_counts().head(10)
                 analytics["top_values"][col_str] = [
-                    {"name": str(k), "count": int(v)}
-                    for k, v in value_counts.items()
+                    {"name": str(k), "count": int(v)} for k, v in value_counts.items()
                 ]
-        
+
         # Generate correlation matrix for numeric columns (if any)
         if len(analytics["numeric_columns"]) > 1:
-            numeric_df = df[analytics["numeric_columns"]].select_dtypes(include=[float, int])
+            numeric_df = df[analytics["numeric_columns"]].select_dtypes(
+                include=[float, int]
+            )
             if not numeric_df.empty:
                 corr_matrix = numeric_df.corr()
                 analytics["correlation"] = {
                     "columns": [str(col) for col in corr_matrix.columns],
                     "matrix": corr_matrix.fillna(0).values.tolist(),
                 }
-        
+
         return analytics

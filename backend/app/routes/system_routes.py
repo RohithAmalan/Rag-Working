@@ -1,10 +1,8 @@
-from fastapi import APIRouter, Depends
-from fastapi import Response
-
-from app.utils.dependencies import require_admin
+from fastapi import APIRouter, Depends, Response
 
 from app.models.schemas import HealthResponse
 from app.utils.config import settings
+from app.utils.dependencies import require_admin
 from app.utils.metrics import metrics_response
 
 router = APIRouter(tags=["system"])
@@ -26,13 +24,20 @@ async def storage_status(current_user: dict = Depends(require_admin)):
 
     if rag_service is not None and hasattr(rag_service, "minio_service"):
         minio_service = getattr(rag_service, "minio_service")
-        minio_connected = bool(getattr(minio_service, "enabled", False) and getattr(minio_service, "_client", None))
+        minio_connected = bool(
+            getattr(minio_service, "enabled", False)
+            and getattr(minio_service, "_client", None)
+        )
 
     can_upload = (not settings.minio_enabled) or minio_connected
     return {
         "backend": backend,
         "can_upload": can_upload,
-        "upload_mode": "minio" if minio_connected else ("local" if not settings.minio_enabled else "blocked-minio-required"),
+        "upload_mode": (
+            "minio"
+            if minio_connected
+            else ("local" if not settings.minio_enabled else "blocked-minio-required")
+        ),
         "minio": {
             "enabled": bool(settings.minio_enabled),
             "connected": minio_connected,

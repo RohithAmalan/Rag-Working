@@ -1,15 +1,14 @@
 """Tests for mongo_vector_service module."""
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from bson import ObjectId
 
-from app.services.mongo_vector_service import (
-    MongoVectorService,
-    _extract_exact_terms,
-    _build_file_hint_filter,
-    _matches_file_hints,
-)
+from app.services.mongo_vector_service import (MongoVectorService,
+                                               _build_file_hint_filter,
+                                               _extract_exact_terms,
+                                               _matches_file_hints)
 
 
 class TestExtractExactTerms:
@@ -134,7 +133,7 @@ class TestFileHintFunctions:
     def test_matches_file_hints_empty_hints(self):
         """Test that empty hints match everything."""
         metadata = {"file_name": "any-file.csv"}
-        
+
         assert _matches_file_hints(metadata, []) is True
 
 
@@ -147,14 +146,15 @@ class TestMongoVectorService:
         db = MagicMock()
         db.chunks = MagicMock()
         db.documents = MagicMock()
-        
+
         from app.utils.config import settings
+
         # Mock dictionary access like db["documents"] and db["chunks"]
         collections_map = {
             "documents": db.documents,
             "chunks": db.chunks,
             settings.documents_collection: db.documents,
-            settings.chunks_collection: db.chunks
+            settings.chunks_collection: db.chunks,
         }
         db.__getitem__.side_effect = lambda key: collections_map.get(key, MagicMock())
         return db
@@ -175,7 +175,9 @@ class TestMongoVectorService:
             return_value=MagicMock(inserted_ids=[ObjectId(), ObjectId()])
         )
 
-        with patch("app.services.mongo_vector_service.generate_batch_embeddings") as mock_embed:
+        with patch(
+            "app.services.mongo_vector_service.generate_batch_embeddings"
+        ) as mock_embed:
             mock_embed.return_value = [[0.1, 0.2], [0.3, 0.4]]
 
             result = await vector_service.store_document_chunks(
@@ -224,12 +226,13 @@ class TestMongoVectorService:
             )
         )
 
-        with patch("app.services.embedding_service.generate_single_embedding") as mock_embed:
+        with patch(
+            "app.services.embedding_service.generate_single_embedding"
+        ) as mock_embed:
             mock_embed.return_value = [0.1, 0.2, 0.3]
 
             results = await vector_service.search_chunks(
-                query_text="test query",
-                top_k=5
+                query_text="test query", top_k=5
             )
 
             assert len(results) > 0
@@ -259,16 +262,12 @@ class TestMongoVectorService:
     async def test_delete_document(self, vector_service, mock_db):
         """Test document deletion."""
         doc_id = str(ObjectId())
-        
-        mock_db.documents.find_one = AsyncMock(
-            return_value={"_id": ObjectId(doc_id)}
-        )
+
+        mock_db.documents.find_one = AsyncMock(return_value={"_id": ObjectId(doc_id)})
         mock_db.documents.delete_one = AsyncMock(
             return_value=MagicMock(deleted_count=1)
         )
-        mock_db.chunks.delete_many = AsyncMock(
-            return_value=MagicMock(deleted_count=5)
-        )
+        mock_db.chunks.delete_many = AsyncMock(return_value=MagicMock(deleted_count=5))
 
         result = await vector_service.delete_document_and_chunks(doc_id)
 
@@ -278,7 +277,7 @@ class TestMongoVectorService:
     async def test_delete_document_not_found(self, vector_service, mock_db):
         """Test deletion of non-existent document."""
         doc_id = str(ObjectId())
-        
+
         mock_db.documents.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(ValueError, match="not found"):
@@ -305,15 +304,15 @@ class TestMongoVectorService:
             )
         )
 
-        with patch("app.services.embedding_service.generate_single_embedding") as mock_embed:
+        with patch(
+            "app.services.embedding_service.generate_single_embedding"
+        ) as mock_embed:
             mock_embed.return_value = [0.1, 0.2, 0.3]
 
             # Search with file hint
             await vector_service.search_chunks(
-                query_text="find in customers file",
-                top_k=5
+                query_text="find in customers file", top_k=5
             )
 
             # Should have called embedding generation
             mock_embed.assert_called()
-

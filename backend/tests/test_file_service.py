@@ -1,9 +1,10 @@
 """Tests for file_service module."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, mock_open
+from unittest.mock import AsyncMock, Mock, mock_open, patch
+
 import pandas as pd
+import pytest
 from fastapi import UploadFile
 
 from app.services.file_service import FileService
@@ -15,11 +16,7 @@ class TestFileService:
     @pytest.fixture
     def file_service(self, tmp_path):
         """Create a FileService instance with temporary directory."""
-        return FileService(
-            uploads_dir=tmp_path,
-            chunk_size=500,
-            chunk_overlap=50
-        )
+        return FileService(uploads_dir=tmp_path, chunk_size=500, chunk_overlap=50)
 
     @pytest.fixture
     def mock_csv_file(self):
@@ -85,7 +82,9 @@ class TestFileService:
             await file_service.save_upload(mock_file)
 
     @pytest.mark.asyncio
-    async def test_save_upload_generates_unique_names(self, file_service, mock_csv_file):
+    async def test_save_upload_generates_unique_names(
+        self, file_service, mock_csv_file
+    ):
         """Test that uploaded files get unique names."""
         result1 = await file_service.save_upload(mock_csv_file)
         mock_csv_file.read = AsyncMock(return_value=b"col1,col2\nval1,val2")
@@ -144,11 +143,13 @@ class TestFileService:
 
     def test_promote_first_row_with_unnamed_columns(self):
         """Test promotion when unnamed columns exist and first row has headers."""
-        df = pd.DataFrame({
-            "Unnamed: 0": ["Name", "John"],
-            "Unnamed: 1": ["Age", "30"],
-            "Unnamed: 2": ["City", "NYC"]
-        })
+        df = pd.DataFrame(
+            {
+                "Unnamed: 0": ["Name", "John"],
+                "Unnamed: 1": ["Age", "30"],
+                "Unnamed: 2": ["City", "NYC"],
+            }
+        )
         result = FileService._promote_first_row_as_header_if_needed(df)
 
         assert "Name" in result.columns
@@ -159,10 +160,7 @@ class TestFileService:
 
     def test_promote_first_row_insufficient_improvement(self):
         """Test no promotion when first row doesn't improve headers."""
-        df = pd.DataFrame({
-            "Unnamed: 0": [123, "John"],
-            "Unnamed: 1": [456, "30"]
-        })
+        df = pd.DataFrame({"Unnamed: 0": [123, "John"], "Unnamed: 1": [456, "30"]})
         result = FileService._promote_first_row_as_header_if_needed(df)
 
         # Should not promote numeric values as headers
@@ -178,10 +176,12 @@ class TestFileService:
 
     def test_detect_header_row_with_title_row(self):
         """Test detection when first row is a title."""
-        df = pd.DataFrame({
-            "Unnamed: 0": ["Employee Report", "Name", "John"],
-            "Unnamed: 1": ["", "Age", "30"]
-        })
+        df = pd.DataFrame(
+            {
+                "Unnamed: 0": ["Employee Report", "Name", "John"],
+                "Unnamed: 1": ["", "Age", "30"],
+            }
+        )
         result = FileService._detect_header_row(df, max_scan=3)
 
         # Should detect row 1 as the header

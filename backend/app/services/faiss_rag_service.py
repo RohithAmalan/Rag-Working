@@ -43,14 +43,14 @@ class FaissRagService:
         # Alphanumeric IDs (6+ chars, mix of letters/numbers)
         id_pattern = r"\b[a-zA-Z0-9]{6,}\b"
         ids = re.findall(id_pattern, query_text)
-        
+
         # Phone-like patterns (digits with separators)
         phone_pattern = r"\b[\d\s\.\-\(\)x]+\b"
         phones = []
         for match in re.findall(phone_pattern, query_text):
             if any(c.isdigit() for c in match) and len(re.sub(r"\D", "", match)) >= 7:
                 phones.append(match.strip())
-        
+
         return {"ids": ids, "phones": phones}
 
     async def _exact_match_search(
@@ -105,8 +105,13 @@ class FaissRagService:
             saved_path = None
             try:
                 saved_path = await self.pipeline.file_service.save_upload(file)
-                storage_info = self.minio_service.upload_file(saved_path, file.filename or saved_path.name)
-                if settings.minio_enabled and storage_info.get("storage_backend") != "minio":
+                storage_info = self.minio_service.upload_file(
+                    saved_path, file.filename or saved_path.name
+                )
+                if (
+                    settings.minio_enabled
+                    and storage_info.get("storage_backend") != "minio"
+                ):
                     raise RuntimeError(
                         "MinIO is enabled, but object upload failed. Local storage is disabled for uploads."
                     )
@@ -119,11 +124,22 @@ class FaissRagService:
 
                 for doc in parsed_docs:
                     metadata = doc.setdefault("metadata", {})
-                    metadata.setdefault("storage_backend", storage_info.get("storage_backend", "local"))
-                    metadata.setdefault("storage_bucket", storage_info.get("storage_bucket", ""))
-                    metadata.setdefault("storage_object", storage_info.get("storage_object", ""))
-                    metadata.setdefault("storage_url", storage_info.get("storage_url", ""))
-                    metadata.setdefault("storage_path", storage_info.get("storage_path", str(saved_path)))
+                    metadata.setdefault(
+                        "storage_backend", storage_info.get("storage_backend", "local")
+                    )
+                    metadata.setdefault(
+                        "storage_bucket", storage_info.get("storage_bucket", "")
+                    )
+                    metadata.setdefault(
+                        "storage_object", storage_info.get("storage_object", "")
+                    )
+                    metadata.setdefault(
+                        "storage_url", storage_info.get("storage_url", "")
+                    )
+                    metadata.setdefault(
+                        "storage_path",
+                        storage_info.get("storage_path", str(saved_path)),
+                    )
 
                 new_docs.extend(parsed_docs)
 
@@ -149,16 +165,22 @@ class FaissRagService:
                     try:
                         saved_path.unlink(missing_ok=True)
                     except Exception as unlink_exc:
-                        logger.warning(f"Could not remove local temp file {saved_path}: {unlink_exc}")
+                        logger.warning(
+                            f"Could not remove local temp file {saved_path}: {unlink_exc}"
+                        )
 
         merged_docs = existing_docs + new_docs
         self.pipeline._save_cache(merged_docs)
 
         primary_docs = [
-            d for d in merged_docs if d.get("metadata", {}).get("source_priority") == "primary"
+            d
+            for d in merged_docs
+            if d.get("metadata", {}).get("source_priority") == "primary"
         ]
         secondary_docs = [
-            d for d in merged_docs if d.get("metadata", {}).get("source_priority") == "secondary"
+            d
+            for d in merged_docs
+            if d.get("metadata", {}).get("source_priority") == "secondary"
         ]
 
         self.pipeline.vector_manager.rebuild(primary_docs, secondary_docs)
@@ -170,7 +192,9 @@ class FaissRagService:
             "errors": errors,
         }
 
-    async def search_and_retrieve(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
+    async def search_and_retrieve(
+        self, query: str, top_k: int = 5
+    ) -> list[dict[str, Any]]:
         # Try exact match first
         exact_matches = await self._exact_match_search(query, top_k)
         if exact_matches:
@@ -220,7 +244,9 @@ class FaissRagService:
             if not grouped[key]["storage_url"]:
                 grouped[key]["storage_url"] = metadata.get("storage_url", "")
             if grouped[key]["storage_backend"] == "local":
-                grouped[key]["storage_backend"] = metadata.get("storage_backend", "local")
+                grouped[key]["storage_backend"] = metadata.get(
+                    "storage_backend", "local"
+                )
 
         return [
             {
@@ -234,7 +260,9 @@ class FaissRagService:
                     "chunks_stored": info.get("chunks", 0),
                 },
             }
-            for (file_name, source_type), info in sorted(grouped.items(), key=lambda x: x[0][0])
+            for (file_name, source_type), info in sorted(
+                grouped.items(), key=lambda x: x[0][0]
+            )
         ]
 
     async def get_vector_store_stats(self) -> dict[str, Any]:

@@ -8,9 +8,35 @@ logger = logging.getLogger(__name__)
 
 
 STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
-    "i", "in", "is", "it", "me", "of", "on", "or", "that", "the", "this",
-    "to", "tell", "what", "where", "who", "with", "details",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "me",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "tell",
+    "what",
+    "where",
+    "who",
+    "with",
+    "details",
 }
 
 
@@ -69,7 +95,10 @@ def _parse_structured_rows(context: str) -> list[dict[str, str]]:
 def _record_display_name(fields: dict[str, str]) -> str | None:
     first_name = fields.get("first name", "").strip()
     last_name = fields.get("last name", "").strip()
-    customer_name = fields.get("customername", "").strip() or fields.get("customer name", "").strip()
+    customer_name = (
+        fields.get("customername", "").strip()
+        or fields.get("customer name", "").strip()
+    )
 
     if first_name or last_name:
         return " ".join(part for part in [first_name, last_name] if part).strip()
@@ -101,7 +130,9 @@ def _question_tokens(question: str) -> set[str]:
 
 def _key_tokens(key: str) -> set[str]:
     # Tokenize after key humanization to support compact keys like paymentmethod.
-    return {token for token in re.findall(r"[a-z0-9]+", _humanize_key(key).lower()) if token}
+    return {
+        token for token in re.findall(r"[a-z0-9]+", _humanize_key(key).lower()) if token
+    }
 
 
 def _value_tokens(value: str) -> set[str]:
@@ -111,7 +142,19 @@ def _value_tokens(value: str) -> set[str]:
 def _humanize_key(key: str) -> str:
     key = re.sub(r"([a-z])([A-Z])", r"\1 \2", key)
     key = key.replace("_", " ").replace("-", " ")
-    compact_suffixes = ["id", "name", "date", "type", "method", "price", "cost", "status", "number", "location", "manager"]
+    compact_suffixes = [
+        "id",
+        "name",
+        "date",
+        "type",
+        "method",
+        "price",
+        "cost",
+        "status",
+        "number",
+        "location",
+        "manager",
+    ]
     compact = key.replace(" ", "")
     if " " not in key:
         for suffix in compact_suffixes:
@@ -133,7 +176,9 @@ def _extract_identifier_candidates(question: str) -> list[str]:
     return list(dict.fromkeys(candidates))
 
 
-def _structured_record_answer(question: str, context: str, source_types: set[str]) -> str | None:
+def _structured_record_answer(
+    question: str, context: str, source_types: set[str]
+) -> str | None:
     """Return concise deterministic answers for structured CSV/Excel queries."""
     if not (source_types & {"csv", "excel"}):
         return None
@@ -157,27 +202,43 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
         return ""
 
     # Relation query: "what task is assigned for Gabriel"
-    if "task" in q and "assigned" in q and any(token in q for token in ["for", "to", "of"]):
-        q_tokens = {token for token in re.findall(r"[a-z0-9]+", q) if token and token not in STOPWORDS}
+    if (
+        "task" in q
+        and "assigned" in q
+        and any(token in q for token in ["for", "to", "of"])
+    ):
+        q_tokens = {
+            token
+            for token in re.findall(r"[a-z0-9]+", q)
+            if token and token not in STOPWORDS
+        }
         for row in rows:
             assigned_val = _get_by_key_candidates(row, assigned_keys)
             task_val = _get_by_key_candidates(row, task_keys)
             if not assigned_val or not task_val:
                 continue
-            assigned_tokens = {token for token in re.findall(r"[a-z0-9]+", assigned_val.lower())}
+            assigned_tokens = {
+                token for token in re.findall(r"[a-z0-9]+", assigned_val.lower())
+            }
             if q_tokens & assigned_tokens:
                 return f"Task: {task_val}\nAssigned To: {assigned_val}"
 
     # Relation query: "Ticket Resolution task was assigned to whom"
     if "assigned" in q and any(token in q for token in ["whom", "who"]):
-        q_tokens = {token for token in re.findall(r"[a-z0-9]+", q) if token and token not in STOPWORDS}
+        q_tokens = {
+            token
+            for token in re.findall(r"[a-z0-9]+", q)
+            if token and token not in STOPWORDS
+        }
         best_match: tuple[int, str, str] | None = None
         for row in rows:
             task_val = _get_by_key_candidates(row, task_keys)
             assigned_val = _get_by_key_candidates(row, assigned_keys)
             if not task_val or not assigned_val:
                 continue
-            task_tokens = {token for token in re.findall(r"[a-z0-9]+", task_val.lower())}
+            task_tokens = {
+                token for token in re.findall(r"[a-z0-9]+", task_val.lower())
+            }
             overlap = len(q_tokens & task_tokens)
             if overlap > 0 and (best_match is None or overlap > best_match[0]):
                 best_match = (overlap, task_val, assigned_val)
@@ -211,7 +272,9 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
         except ValueError:
             return None
 
-    asks_rank = any(token in q for token in ["highest", "max", "top", "lowest", "minimum", "min"])
+    asks_rank = any(
+        token in q for token in ["highest", "max", "top", "lowest", "minimum", "min"]
+    )
     metric_candidates: list[tuple[str, list[str]]] = [
         ("Total Price", ["total price", "totalprice", "total revenue", "revenue"]),
         ("Unit Price", ["unit price", "unitprice", "price"]),
@@ -234,17 +297,26 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
                     numeric_keys[key] = numeric_keys.get(key, 0) + 1
 
         if numeric_keys:
+
             def _metric_score(key: str) -> int:
                 key_tokens = _key_tokens(key)
                 score = len(query_tokens & key_tokens) * 4
 
                 # Synonym-aware boosts for common business metrics.
-                has_price_intent = any(tok in query_tokens for tok in {"price", "cost", "amount", "revenue", "total"})
+                has_price_intent = any(
+                    tok in query_tokens
+                    for tok in {"price", "cost", "amount", "revenue", "total"}
+                )
                 has_unit_intent = "unit" in query_tokens
                 has_profit_intent = "profit" in query_tokens
                 has_qty_intent = any(tok in query_tokens for tok in {"qty", "quantity"})
 
-                if has_price_intent and ("price" in key_tokens or "amount" in key_tokens or "revenue" in key_tokens or "cost" in key_tokens):
+                if has_price_intent and (
+                    "price" in key_tokens
+                    or "amount" in key_tokens
+                    or "revenue" in key_tokens
+                    or "cost" in key_tokens
+                ):
                     score += 3
                 if has_unit_intent and "unit" in key_tokens:
                     score += 3
@@ -277,7 +349,12 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
                 selected = ranked_rows[:top_n]
                 lines: list[str] = []
                 for idx, (row, value) in enumerate(selected, start=1):
-                    name = _record_display_name(row) or row.get("customer name") or row.get("customername") or "Unknown"
+                    name = (
+                        _record_display_name(row)
+                        or row.get("customer name")
+                        or row.get("customername")
+                        or "Unknown"
+                    )
                     order_id = row.get("order id") or row.get("orderid")
                     product = row.get("product name") or row.get("product")
                     salesperson = row.get("salesperson")
@@ -292,7 +369,11 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
                 return f"Top {metric_label.lower()} records:\n" + "\n".join(lines)
 
             best_row, best_value = ranked_rows[0]
-            best_name = _record_display_name(best_row) or best_row.get("customer name") or best_row.get("customername")
+            best_name = (
+                _record_display_name(best_row)
+                or best_row.get("customer name")
+                or best_row.get("customername")
+            )
             order_id = best_row.get("order id") or best_row.get("orderid")
             product = best_row.get("product name") or best_row.get("product")
             salesperson = best_row.get("salesperson")
@@ -309,7 +390,9 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
             return "\n".join(detail_lines)
 
     asks_who = "who" in q or "name" in q
-    asks_plural = any(phrase in q for phrase in ["who are all", "which are all", "list all", "all "])
+    asks_plural = any(
+        phrase in q for phrase in ["who are all", "which are all", "list all", "all "]
+    )
 
     if asks_who and asks_plural:
         names: list[str] = []
@@ -338,29 +421,41 @@ def _structured_record_answer(question: str, context: str, source_types: set[str
             return f"{display_name} - {job_title}"
 
     if any(token in q for token in ["email", "mail"]):
-        summary = _format_key_value_summary(first_row, ["first name", "last name", "email"])
+        summary = _format_key_value_summary(
+            first_row, ["first name", "last name", "email"]
+        )
         if summary:
             return summary
 
     if any(token in q for token in ["phone", "mobile", "number"]):
-        summary = _format_key_value_summary(first_row, ["first name", "last name", "phone", "phone 1", "phone 2"])
+        summary = _format_key_value_summary(
+            first_row, ["first name", "last name", "phone", "phone 1", "phone 2"]
+        )
         if summary:
             return summary
 
     return None
 
 
-def _structured_lookup_answer(question: str, context: str, source_types: set[str]) -> str | None:
+def _structured_lookup_answer(
+    question: str, context: str, source_types: set[str]
+) -> str | None:
     """Return dynamic field-value output for any structured row schema."""
     if not (source_types & {"csv", "excel"}):
         return None
 
     q_lower = question.lower()
-    if any(token in q_lower for token in ["list", "all", "which are all", "who are all", "names of all"]):
+    if any(
+        token in q_lower
+        for token in ["list", "all", "which are all", "who are all", "names of all"]
+    ):
         return None
     if "task" in q_lower and "assigned" in q_lower:
         return None
-    if ("unit price" in q_lower or "price" in q_lower) and any(token in q_lower for token in ["highest", "max", "top", "lowest", "minimum", "min"]):
+    if ("unit price" in q_lower or "price" in q_lower) and any(
+        token in q_lower
+        for token in ["highest", "max", "top", "lowest", "minimum", "min"]
+    ):
         return None
 
     skip_fields = {
@@ -373,7 +468,10 @@ def _structured_lookup_answer(question: str, context: str, source_types: set[str
 
     q_tokens = _question_tokens(question)
     id_candidates = _extract_identifier_candidates(question)
-    asks_all = any(token in question.lower() for token in ["detail", "details", "all", "everything", "full", "extract"])
+    asks_all = any(
+        token in question.lower()
+        for token in ["detail", "details", "all", "everything", "full", "extract"]
+    )
 
     # Parse ALL rows and find the specific matching row (not just the first)
     all_rows = _parse_structured_rows(context)
@@ -397,7 +495,10 @@ def _structured_lookup_answer(question: str, context: str, source_types: set[str
     display_fields = {
         key: value
         for key, value in fields.items()
-        if key not in skip_fields and value and value.strip() and value.strip().lower() != "unknown"
+        if key not in skip_fields
+        and value
+        and value.strip()
+        and value.strip().lower() != "unknown"
     }
 
     if not display_fields:
@@ -431,108 +532,165 @@ def _structured_lookup_answer(question: str, context: str, source_types: set[str
     return "\n".join(lines) if lines else None
 
 
-def _list_all_records_answer(question: str, context: str, source_types: set[str]) -> str | None:
+def _list_all_records_answer(
+    question: str, context: str, source_types: set[str]
+) -> str | None:
     """Format 'list all' queries as structured bullet points showing multiple records."""
     if not (source_types & {"csv", "excel"}):
         return None
-    
+
     q_lower = question.lower()
-    
+
     # Detect "list all" type queries - must explicitly ask for ALL/multiple items
     # Don't trigger on single record queries like "list details about X" or "show the order X"
-    explicit_list_all = any(phrase in q_lower for phrase in ["list all", "show all", "who are all", "which are all", "all the ", "all "])
-    has_singular_indicators = any(word in q_lower for word in ["detail", "details", "about", "for", "of ", "id", "order", "customer"])
-    
+    explicit_list_all = any(
+        phrase in q_lower
+        for phrase in [
+            "list all",
+            "show all",
+            "who are all",
+            "which are all",
+            "all the ",
+            "all ",
+        ]
+    )
+    has_singular_indicators = any(
+        word in q_lower
+        for word in [
+            "detail",
+            "details",
+            "about",
+            "for",
+            "of ",
+            "id",
+            "order",
+            "customer",
+        ]
+    )
+
     # Only treat as list query if explicitly asks for "all" AND not asking about specific item
     is_list_query = explicit_list_all and not has_singular_indicators
-    
+
     if not is_list_query:
         return None
-    
+
     rows = _parse_structured_rows(context)
     if not rows:
         return None
-    
+
     # Limit to reasonable number of results
     max_records = min(len(rows), 20)
     rows = rows[:max_records]
-    
+
     # Determine which fields to display based on the question
     q_tokens = _question_tokens(question)
-    
+
     # Common important fields to prioritize
     priority_fields = [
-        "product name", "product", "customer name", "customername", "first name", "last name",
-        "order id", "orderid", "salesperson", "sales person", "region", "category",
-        "unit price", "unitprice", "total price", "totalprice", "quantity", "date"
+        "product name",
+        "product",
+        "customer name",
+        "customername",
+        "first name",
+        "last name",
+        "order id",
+        "orderid",
+        "salesperson",
+        "sales person",
+        "region",
+        "category",
+        "unit price",
+        "unitprice",
+        "total price",
+        "totalprice",
+        "quantity",
+        "date",
     ]
-    
+
     # Build display for each record
     lines = []
     for idx, row in enumerate(rows, start=1):
         # Skip internal fields
-        skip_fields = {"lookup keywords", "id lookup", "raw row mapping", "record details", "data row from"}
-        
+        skip_fields = {
+            "lookup keywords",
+            "id lookup",
+            "raw row mapping",
+            "record details",
+            "data row from",
+        }
+
         # Get display name if available
         display_name = _record_display_name(row)
-        
+
         # Collect relevant fields
         record_fields: dict[str, str] = {}
         for key, value in row.items():
             if key in skip_fields or not value or value.strip().lower() == "unknown":
                 continue
             record_fields[key] = value.strip()
-        
+
         if not record_fields:
             continue
-        
+
         # Score fields by relevance to question
         scored_items: list[tuple[int, str, str]] = []
         for key, value in record_fields.items():
             score = 0
-            
+
             # Boost if key matches question tokens
             key_tokens = _key_tokens(key)
             if key_tokens & q_tokens:
                 score += 5
-            
+
             # Boost priority fields
             if key.lower() in priority_fields:
                 score += 3
-            
+
             # Boost name-like fields
-            if any(name_part in key.lower() for name_part in ["name", "customer", "product"]):
+            if any(
+                name_part in key.lower()
+                for name_part in ["name", "customer", "product"]
+            ):
                 score += 2
-            
+
             scored_items.append((score, key, value))
-        
+
         # Sort by score and select top fields
         scored_items.sort(key=lambda x: (-x[0], x[1]))
         top_fields = scored_items[:8]  # Show up to 8 most relevant fields
-        
+
         # Format record as bullet point
         if display_name:
             record_line = f"{idx}. {display_name}"
         elif "product" in record_fields or "product name" in record_fields:
-            product = record_fields.get("product name") or record_fields.get("product", "Unknown Product")
+            product = record_fields.get("product name") or record_fields.get(
+                "product", "Unknown Product"
+            )
             record_line = f"{idx}. {product}"
         else:
             record_line = f"{idx}. Record {idx}"
-        
+
         # Add key details inline
         detail_parts = []
         for _, key, value in top_fields[:5]:  # Show top 5 inline
-            if key.lower() not in ["first name", "last name", "customer name", "customername", "product", "product name"]:
+            if key.lower() not in [
+                "first name",
+                "last name",
+                "customer name",
+                "customername",
+                "product",
+                "product name",
+            ]:
                 detail_parts.append(f"{_humanize_key(key)}: {value}")
-        
+
         if detail_parts:
             record_line += " | " + " | ".join(detail_parts)
-        
+
         lines.append(record_line)
-    
+
     if not lines:
         return None
-    
+
     # Determine what we're listing
     list_subject = "records"
     if "product" in q_lower:
@@ -543,7 +701,7 @@ def _list_all_records_answer(question: str, context: str, source_types: set[str]
         list_subject = "orders"
     elif "salesperson" in q_lower or "sales" in q_lower:
         list_subject = "sales records"
-    
+
     header = f"Found {len(lines)} {list_subject}:\n"
     return header + "\n".join(lines)
 
@@ -591,28 +749,42 @@ def _build_system_prompt(source_types: set[str]) -> str:
     return STRICT_SYSTEM_PROMPT + " Prefer structured sources when available."
 
 
-def _extractive_fallback_answer(question: str, context: str, source_types: set[str] | None = None) -> str:
+def _extractive_fallback_answer(
+    question: str, context: str, source_types: set[str] | None = None
+) -> str:
     """Return a best-effort answer from retrieved context without external LLM."""
     if not context.strip():
         return "I don't know based on the uploaded data."
 
     # Split context into simple candidate sentences.
-    candidates = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", context) if s.strip()]
+    candidates = [
+        s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", context) if s.strip()
+    ]
     if not candidates:
         return "I don't know based on the uploaded data."
 
     source_types = source_types or set()
-    tokens = {token for token in re.findall(r"\w+", question.lower()) if token not in STOPWORDS}
+    tokens = {
+        token
+        for token in re.findall(r"\w+", question.lower())
+        if token not in STOPWORDS
+    }
     if not tokens:
         return candidates[0]
 
     best = ""
     best_score = -1
     for sentence in candidates:
-        s_tokens = {token for token in re.findall(r"\w+", sentence.lower()) if token not in STOPWORDS}
+        s_tokens = {
+            token
+            for token in re.findall(r"\w+", sentence.lower())
+            if token not in STOPWORDS
+        }
         overlap = tokens & s_tokens
         score = len(overlap)
-        if source_types & {"csv", "excel"} and sentence.lower().startswith("this record shows"):
+        if source_types & {"csv", "excel"} and sentence.lower().startswith(
+            "this record shows"
+        ):
             score += 2
         if score > best_score:
             best_score = score
@@ -691,10 +863,14 @@ def _llm_generate(
     try:
         from groq import Groq
     except ImportError as e:
-        raise ImportError("groq package not installed. Install with: pip install groq") from e
+        raise ImportError(
+            "groq package not installed. Install with: pip install groq"
+        ) from e
 
     try:
-        logger.debug(f"Calling Groq API: model={groq_model}, source_types={source_types}")
+        logger.debug(
+            f"Calling Groq API: model={groq_model}, source_types={source_types}"
+        )
         client = Groq(api_key=groq_api_key, timeout=30.0)
 
         # Clean context to remove raw chunk metadata before sending to LLM
@@ -717,7 +893,7 @@ def _llm_generate(
             )
         else:
             user_prompt += "Answer clearly and concisely based on the context provided."
-        
+
         response: Any = client.chat.completions.create(
             model=groq_model,
             temperature=0,
@@ -727,7 +903,10 @@ def _llm_generate(
                 {"role": "user", "content": user_prompt},
             ],
         )
-        answer = response.choices[0].message.content or "I don't know based on the uploaded data."
+        answer = (
+            response.choices[0].message.content
+            or "I don't know based on the uploaded data."
+        )
         logger.debug(f"Groq response: {answer[:100]}...")
         return answer
     except Exception as e:

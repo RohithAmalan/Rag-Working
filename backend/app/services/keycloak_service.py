@@ -94,13 +94,17 @@ class KeycloakService:
                 # aud="account" by default; issuer is verified manually below.
                 options={"verify_aud": False},
             )
-            
+
             # Flexible issuer validation: accept both localhost and host.docker.internal
             # This handles the case where frontend (localhost) and backend (Docker) use different URLs
             token_issuer = payload.get("iss", "")
             expected_realm = f"/realms/{settings.keycloak_realm}"
             if not token_issuer.endswith(expected_realm):
-                logger.warning("JWT issuer mismatch: %s (expected realm: %s)", token_issuer, expected_realm)
+                logger.warning(
+                    "JWT issuer mismatch: %s (expected realm: %s)",
+                    token_issuer,
+                    expected_realm,
+                )
                 return None
 
             return {
@@ -116,7 +120,9 @@ class KeycloakService:
             logger.error("Keycloak verify_token error: %s", exc)
             return None
 
-    async def exchange_credentials(self, username: str, password: str) -> Optional[dict]:
+    async def exchange_credentials(
+        self, username: str, password: str
+    ) -> Optional[dict]:
         """
         Exchange username/password for Keycloak tokens using the Resource Owner
         Password Credentials (ROPC) grant.
