@@ -1,7 +1,8 @@
 """Tests for Keycloak service."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from jose import jwt
 
 from app.services.keycloak_service import KeycloakService
@@ -50,7 +51,7 @@ def valid_token_payload():
 @pytest.mark.asyncio
 async def test_verify_token_success(keycloak_service, valid_token_payload):
     """Test successful token verification."""
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -58,12 +59,12 @@ async def test_verify_token_success(keycloak_service, valid_token_payload):
         }
         mock_client.get.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        with patch('app.services.keycloak_service.jwt.decode') as mock_decode:
+
+        with patch("app.services.keycloak_service.jwt.decode") as mock_decode:
             mock_decode.return_value = valid_token_payload
-            
+
             result = await keycloak_service.verify_token("test-token")
-            
+
             assert result is not None
             assert result["username"] == "testuser"
             assert result["sub"] == "user-123"
@@ -85,17 +86,17 @@ async def test_verify_token_extracts_roles(keycloak_service):
         "iss": "http://localhost:8080/realms/rag-realm",
         "exp": 9999999999,
     }
-    
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.json.return_value = {"keys": [{"kid": "k1"}]}
         mock_client.get.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        with patch('app.services.keycloak_service.jwt.decode', return_value=payload):
+
+        with patch("app.services.keycloak_service.jwt.decode", return_value=payload):
             result = await keycloak_service.verify_token("admin-token")
-            
+
             assert result is not None
             assert Roles.ADMIN in result["roles"]
             assert Roles.USER in result["roles"]
@@ -113,7 +114,7 @@ async def test_verify_token_flexible_issuer(keycloak_service):
         "iss": "http://localhost:8080/realms/rag-realm",
         "exp": 9999999999,
     }
-    
+
     # Token with host.docker.internal issuer
     payload_docker = {
         "sub": "user-789",
@@ -122,21 +123,21 @@ async def test_verify_token_flexible_issuer(keycloak_service):
         "iss": "http://host.docker.internal:8080/realms/rag-realm",
         "exp": 9999999999,
     }
-    
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.json.return_value = {"keys": []}
         mock_client.get.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        with patch('app.services.keycloak_service.jwt.decode') as mock_decode:
+
+        with patch("app.services.keycloak_service.jwt.decode") as mock_decode:
             # Test localhost issuer
             mock_decode.return_value = payload_localhost
             result1 = await keycloak_service.verify_token("token1")
             assert result1 is not None
             assert result1["username"] == "user"
-            
+
             # Test docker issuer
             mock_decode.return_value = payload_docker
             result2 = await keycloak_service.verify_token("token2")
@@ -154,15 +155,15 @@ async def test_verify_token_invalid_issuer(keycloak_service):
         "iss": "http://evil.com/realms/wrong-realm",  # Wrong issuer
         "exp": 9999999999,
     }
-    
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.json.return_value = {"keys": []}
         mock_client.get.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        with patch('app.services.keycloak_service.jwt.decode', return_value=payload):
+
+        with patch("app.services.keycloak_service.jwt.decode", return_value=payload):
             result = await keycloak_service.verify_token("bad-token")
             assert result is None
 
@@ -176,17 +177,17 @@ async def test_verify_token_no_roles(keycloak_service):
         "iss": "http://localhost:8080/realms/rag-realm",
         "exp": 9999999999,
     }
-    
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.json.return_value = {"keys": []}
         mock_client.get.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        with patch('app.services.keycloak_service.jwt.decode', return_value=payload):
+
+        with patch("app.services.keycloak_service.jwt.decode", return_value=payload):
             result = await keycloak_service.verify_token("no-roles-token")
-            
+
             assert result is not None
             assert result["roles"] == []
 
@@ -194,7 +195,7 @@ async def test_verify_token_no_roles(keycloak_service):
 @pytest.mark.asyncio
 async def test_exchange_credentials_success(keycloak_service):
     """Test successful credential exchange (ROPC)."""
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -205,9 +206,9 @@ async def test_exchange_credentials_success(keycloak_service):
         }
         mock_client.post.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
+
         result = await keycloak_service.exchange_credentials("user", "password")
-        
+
         assert result is not None
         assert result["access_token"] == "access-token-123"
         assert result["refresh_token"] == "refresh-token-456"
@@ -216,11 +217,11 @@ async def test_exchange_credentials_success(keycloak_service):
 @pytest.mark.asyncio
 async def test_exchange_credentials_failure(keycloak_service):
     """Test credential exchange with invalid credentials."""
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.post.side_effect = Exception("Invalid credentials")
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
+
         result = await keycloak_service.exchange_credentials("wrong", "wrong")
         assert result is None
 
@@ -228,13 +229,13 @@ async def test_exchange_credentials_failure(keycloak_service):
 @pytest.mark.asyncio
 async def test_revoke_token_success(keycloak_service):
     """Test successful token revocation."""
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 204
         mock_client.post.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
+
         # Should not raise exception
         await keycloak_service.revoke_token("refresh-token")
 
@@ -242,15 +243,13 @@ async def test_revoke_token_success(keycloak_service):
 @pytest.mark.asyncio
 async def test_revoke_token_failure(keycloak_service):
     """Test token revocation handles errors gracefully."""
-    with patch('app.services.keycloak_service.httpx.AsyncClient') as mock_client_class:
+    with patch("app.services.keycloak_service.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.post.side_effect = Exception("Network error")
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
+
         # Should not raise exception (revoke is best-effort)
         try:
             await keycloak_service.revoke_token("token")
         except Exception:
             pytest.fail("revoke_token should not raise exceptions")
-
-

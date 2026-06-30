@@ -1,25 +1,28 @@
-import warnings
 import asyncio
+import warnings
 
 # Suppress harmless multiprocessing warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
+warnings.filterwarnings(
+    "ignore", category=UserWarning, module="multiprocessing.resource_tracker"
+)
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
-from app.routes.rag_routes import router as rag_router
-from app.routes.system_routes import router as system_router
+from app.db.mongo import close_mongo_connection, connect_to_mongo, get_database
+from app.routes.audit_routes import router as audit_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.evaluation_routes import router as evaluation_router
-from app.routes.audit_routes import router as audit_router
-from app.services.faiss_rag_service import FaissRagService
+from app.routes.rag_routes import router as rag_router
+from app.routes.system_routes import router as system_router
 from app.services.embedding_service import get_embedding_model
+from app.services.faiss_rag_service import FaissRagService
 from app.services.rag_service import RagService
 from app.services.semantic_cache_service import SemanticCacheService
 from app.utils.config import settings
 from app.utils.logger import get_logger
-from app.utils.metrics import observe_http_request, set_storage_backend, start_timer
+from app.utils.metrics import (observe_http_request, set_storage_backend,
+                               start_timer)
 
 logger = get_logger(__name__)
 
@@ -111,6 +114,7 @@ async def startup_event():
     if settings.redis_enabled:
         try:
             import redis.asyncio as aioredis
+
             redis_client = aioredis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
@@ -125,7 +129,9 @@ async def startup_event():
             app.state.semantic_cache = cache
             logger.info("Redis semantic cache initialized")
         except Exception as e:
-            logger.warning(f"Could not initialize Redis cache (continuing without cache): {e}")
+            logger.warning(
+                f"Could not initialize Redis cache (continuing without cache): {e}"
+            )
     else:
         logger.info("Redis cache disabled (REDIS_ENABLED=false)")
 

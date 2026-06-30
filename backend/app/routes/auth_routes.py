@@ -2,15 +2,16 @@
 
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Header, Response
 from typing import Optional
+
+from fastapi import APIRouter, Header, HTTPException, Response
 from jose import jwt as jose_jwt
 
 from app.models.auth import LoginRequest, LoginResponse, User
 from app.services import auth_service
-from app.services.n8n_service import notify_n8n_event
 from app.services.keycloak_service import keycloak_service
-from app.utils.constants import Roles, APIMessages
+from app.services.n8n_service import notify_n8n_event
+from app.utils.constants import APIMessages, Roles
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +52,15 @@ async def login(request: LoginRequest, response: Response):
     - admin / admin123
     - demo / demo123
     - user / user123
-    
+
     Refresh token is set as an HttpOnly, Secure, SameSite cookie for secure refresh flows.
     """
     logger.info(f"Login attempt for user: {request.username}")
 
     if keycloak_service.is_enabled():
-        tokens = await keycloak_service.exchange_credentials(request.username, request.password)
+        tokens = await keycloak_service.exchange_credentials(
+            request.username, request.password
+        )
         if not tokens:
             logger.warning(f"Keycloak login failed for user: {request.username}")
             await notify_n8n_event(
@@ -71,7 +74,7 @@ async def login(request: LoginRequest, response: Response):
         # Extract roles from the access token
         user_info = await keycloak_service.verify_token(tokens["access_token"])
         roles = user_info.get("roles", []) if user_info else []
-        
+
         # Set refresh token as HttpOnly cookie (secure token storage)
         if tokens.get("refresh_token"):
             response.set_cookie(
@@ -82,8 +85,10 @@ async def login(request: LoginRequest, response: Response):
                 samesite="lax",
                 max_age=86400 * 7,  # 7 days
             )
-        
-        logger.info(f"User {request.username} authenticated via Keycloak with roles: {roles}")
+
+        logger.info(
+            f"User {request.username} authenticated via Keycloak with roles: {roles}"
+        )
         await notify_n8n_event(
             event="login_success",
             severity="info",
@@ -112,9 +117,11 @@ async def login(request: LoginRequest, response: Response):
 
     # Assign default roles for legacy auth
     roles = [Roles.ADMIN, Roles.USER] if request.username == "admin" else [Roles.USER]
-    
+
     access_token = auth_service.create_access_token(request.username)
-    logger.info(f"User {request.username} logged in via legacy auth with roles: {roles}")
+    logger.info(
+        f"User {request.username} logged in via legacy auth with roles: {roles}"
+    )
     await notify_n8n_event(
         event="login_success",
         severity="info",
@@ -131,7 +138,9 @@ async def login(request: LoginRequest, response: Response):
 
 
 @router.post("/logout")
-async def logout(authorization: Optional[str] = Header(None), refresh_token: Optional[str] = None):
+async def logout(
+    authorization: Optional[str] = Header(None), refresh_token: Optional[str] = None
+):
     """
     Logout endpoint.
 
@@ -161,7 +170,9 @@ async def logout(authorization: Optional[str] = Header(None), refresh_token: Opt
             if revoked:
                 logger.info("User logged out via Keycloak (server + local revoke)")
                 return {"message": "Logged out successfully"}
-            raise HTTPException(status_code=401, detail="Logout failed — invalid refresh token")
+            raise HTTPException(
+                status_code=401, detail="Logout failed — invalid refresh token"
+            )
 
         logger.info("User logged out via Keycloak (local revoke only)")
         return {"message": "Logged out successfully"}
@@ -199,7 +210,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
         return User(
             username=user_info["username"],
             roles=user_info.get("roles", []),
-            is_active=True
+            is_active=True,
         )
 
     # Legacy path
@@ -209,7 +220,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
 
     # Assign default roles for legacy auth
     roles = [Roles.ADMIN, Roles.USER] if username == "admin" else [Roles.USER]
-    
+
     return User(username=username, roles=roles, is_active=True)
 
 

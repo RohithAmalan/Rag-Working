@@ -1,8 +1,9 @@
 """Pytest configuration and fixtures."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, AsyncMock
 
 from app.main import app
 from app.services.auth_service import ACTIVE_TOKENS, DEMO_USERS
@@ -38,21 +39,27 @@ def invalid_credentials():
 def mock_rag_service():
     """Create a mock RAG service."""
     service = MagicMock()
-    service.upload_files = AsyncMock(return_value={
-        "message": "Files uploaded successfully",
-        "files_processed": 1,
-        "chunks_created": 10,
-    })
-    service.query = AsyncMock(return_value={
-        "answer": "Test answer",
-        "chunks": [],
-        "source_types": ["csv"],
-    })
-    service.get_vector_store_stats = AsyncMock(return_value={
-        "total_chunks": 100,
-        "primary_chunks": 80,
-        "secondary_chunks": 20,
-    })
+    service.upload_files = AsyncMock(
+        return_value={
+            "message": "Files uploaded successfully",
+            "files_processed": 1,
+            "chunks_created": 10,
+        }
+    )
+    service.query = AsyncMock(
+        return_value={
+            "answer": "Test answer",
+            "chunks": [],
+            "source_types": ["csv"],
+        }
+    )
+    service.get_vector_store_stats = AsyncMock(
+        return_value={
+            "total_chunks": 100,
+            "primary_chunks": 80,
+            "secondary_chunks": 20,
+        }
+    )
     return service
 
 
@@ -60,6 +67,7 @@ def mock_rag_service():
 def sample_csv_file():
     """Create a sample CSV file for testing."""
     import io
+
     content = "Name,Age,City\nJohn,30,NYC\nJane,25,LA"
     return io.BytesIO(content.encode())
 
@@ -68,4 +76,5 @@ def sample_csv_file():
 def sample_pdf_file():
     """Create a sample PDF-like file for testing."""
     import io
+
     return io.BytesIO(b"%PDF-1.4 sample content")

@@ -55,7 +55,9 @@ class Settings(BaseSettings):
         default="all-MiniLM-L6-v2",
         validation_alias="EMBEDDING_MODEL",
     )
-    embedding_dimension: int = Field(default=384, validation_alias="EMBEDDING_DIMENSION")
+    embedding_dimension: int = Field(
+        default=384, validation_alias="EMBEDDING_DIMENSION"
+    )
 
     # LangGraph Workflow Configuration
     langgraph_workflow_mode: str = Field(
@@ -66,11 +68,15 @@ class Settings(BaseSettings):
     # Keycloak Configuration
     keycloak_url: str = Field(default="", validation_alias="KEYCLOAK_URL")
     keycloak_realm: str = Field(default="rag-realm", validation_alias="KEYCLOAK_REALM")
-    keycloak_client_id: str = Field(default="rag-app", validation_alias="KEYCLOAK_CLIENT_ID")
+    keycloak_client_id: str = Field(
+        default="rag-app", validation_alias="KEYCLOAK_CLIENT_ID"
+    )
 
     # Redis Semantic Cache Configuration
     redis_enabled: bool = Field(default=True, validation_alias="REDIS_ENABLED")
-    redis_url: str = Field(default="redis://localhost:6379", validation_alias="REDIS_URL")
+    redis_url: str = Field(
+        default="redis://localhost:6379", validation_alias="REDIS_URL"
+    )
     cache_similarity_threshold: float = Field(
         default=0.92,
         validation_alias="CACHE_SIMILARITY_THRESHOLD",

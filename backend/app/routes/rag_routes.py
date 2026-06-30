@@ -3,15 +3,17 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from app.models.schemas import DocumentsResponse, QueryRequest, QueryResponse, SourceItem, RetrievedChunk
+from app.models.schemas import (DocumentsResponse, QueryRequest, QueryResponse,
+                                RetrievedChunk, SourceItem)
 from app.rag.generator import generate_answer
+from app.services.n8n_service import notify_n8n_event
 from app.services.rag_service import RagService
 from app.services.semantic_cache_service import SemanticCacheService
-from app.services.n8n_service import notify_n8n_event
 from app.utils.config import settings
+from app.utils.dependencies import (get_current_user, require_admin,
+                                    require_user)
 from app.utils.logger import get_logger
 from app.utils.metrics import observe_rag_query, observe_upload, start_timer
-from app.utils.dependencies import require_admin, require_user, get_current_user
 
 logger = get_logger(__name__)
 
@@ -35,6 +37,7 @@ def get_rag_service() -> RagService:
 def get_semantic_cache() -> SemanticCacheService | None:
     """Get semantic cache from app state (may be None if Redis is unavailable)."""
     from app.main import app
+
     return getattr(app.state, "semantic_cache", None)
 
 
@@ -61,14 +64,14 @@ def get_semantic_cache() -> SemanticCacheService | None:
                         "total_chunks": 45,
                         "documents": [
                             {"filename": "sales.csv", "chunks_stored": 30},
-                            {"filename": "report.pdf", "chunks_stored": 15}
+                            {"filename": "report.pdf", "chunks_stored": 15},
                         ],
-                        "errors": []
+                        "errors": [],
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def upload_documents(
     files: list[UploadFile] = File(..., description="Files to upload (CSV, XLSX, PDF)"),
@@ -87,7 +90,7 @@ async def upload_documents(
     """
     logger.info(f"Admin {current_user.get('username')} uploading {len(files)} file(s)")
     files_count = len(files)
-    
+
     if not files:
         await notify_n8n_event(
             event="upload_error",
@@ -99,10 +102,12 @@ async def upload_documents(
 
     try:
         result = await rag_service.upload_and_process_files(files)
-        
+
         # Calculate chunk counts
-        total_chunks = sum(doc.get("chunks_stored", 0) for doc in result.get("documents", []))
-        
+        total_chunks = sum(
+            doc.get("chunks_stored", 0) for doc in result.get("documents", [])
+        )
+
         observe_upload(status="success", files_count=files_count)
         return {
             "message": "Files uploaded and indexed successfully",
@@ -130,7 +135,9 @@ async def upload_documents(
             username=current_user.get("username", "unknown"),
             details={"reason": "upload_failed", "error": str(exc)},
         )
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Upload failed: {str(exc)}"
+        ) from exc
 
 
 @router.post(
@@ -159,18 +166,22 @@ async def upload_documents(
                             {
                                 "text": "Employee John achieved sales of 45000 in March.",
                                 "filename": "sales.csv",
-                                "similarity_score": 0.92
+                                "similarity_score": 0.92,
                             }
                         ],
                         "citations": [
-                            {"index": 1, "source": "sales.csv", "text": "Employee John..."}
+                            {
+                                "index": 1,
+                                "source": "sales.csv",
+                                "text": "Employee John...",
+                            }
                         ],
-                        "confidence": 0.92
+                        "confidence": 0.92,
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def query_documents(
     payload: QueryRequest,
@@ -188,7 +199,9 @@ async def query_documents(
     Returns:
         Query response with answer and retrieved chunks
     """
-    logger.info(f"User {current_user.get('username')} querying: {payload.question[:50]}...")
+    logger.info(
+        f"User {current_user.get('username')} querying: {payload.question[:50]}..."
+    )
     started = start_timer()
     workflow = "classic"
 
@@ -243,7 +256,10 @@ async def query_documents(
                 groq_api_key=settings.groq_api_key,
                 groq_model=settings.groq_model,
                 source_types={
-                    chunk.get("metadata", {}).get("source_type", chunk.get("metadata", {}).get("file_type", "unknown"))
+                    chunk.get("metadata", {}).get(
+                        "source_type",
+                        chunk.get("metadata", {}).get("file_type", "unknown"),
+                    )
                     for chunk in retrieved_chunks
                 },
             )
@@ -268,7 +284,9 @@ async def query_documents(
                 "score": chunk.get("similarity_score", 0.0),
                 "metadata": {
                     **chunk.get("metadata", {}),
-                    "file_name": chunk.get("metadata", {}).get("file_name", chunk.get("source", "Unknown")),
+                    "file_name": chunk.get("metadata", {}).get(
+                        "file_name", chunk.get("source", "Unknown")
+                    ),
                     "source_type": chunk.get("metadata", {}).get(
                         "source_type",
                         chunk.get("metadata", {}).get("file_type", "unknown"),
@@ -326,17 +344,18 @@ async def query_documents(
             status="error",
             workflow=workflow,
         )
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Query failed: {str(exc)}"
+        ) from exc
 
     finally:
-        if 'retrieved_chunks' in locals() and 'answer' in locals():
+        if "retrieved_chunks" in locals() and "answer" in locals():
             observe_rag_query(
                 duration_seconds=start_timer() - started,
                 status="success",
                 workflow=workflow,
                 retrieved_chunks=len(retrieved_chunks),
             )
-
 
 
 @router.post("/query-langgraph", response_model=dict[str, Any])
@@ -346,32 +365,34 @@ async def query_with_langgraph(
     current_user: dict = Depends(require_user),  # Authenticated users only
 ):
     """Query documents using LangGraph orchestrated workflow (Phase 1).
-    
+
     This endpoint uses LangGraph state machine for:
     - Query intent analysis
     - Hybrid retrieval (exact + vector + ranking)
     - Answer generation with citations
     - Confidence scoring
-    
+
     Args:
         payload: Query request with question, top_k, and selected_file
         rag_service: RAG service instance
-        
+
     Returns:
         Enhanced response with answer, chunks, citations, confidence, and workflow metadata
     """
     started = start_timer()
     workflow = "langgraph"
     try:
-        logger.info(f"LangGraph query: {payload.question[:50]}... (file={payload.selected_file})")
-        
+        logger.info(
+            f"LangGraph query: {payload.question[:50]}... (file={payload.selected_file})"
+        )
+
         # Execute LangGraph workflow
         result = await rag_service.query_with_langgraph(
             query=payload.question,
             top_k=payload.top_k,
             file_name=payload.selected_file,
         )
-        
+
         # Format retrieved chunks for response
         formatted_chunks = [
             {
@@ -380,12 +401,14 @@ async def query_with_langgraph(
                 "metadata": {
                     **chunk.get("metadata", {}),
                     "file_name": chunk.get("metadata", {}).get("file_name", "Unknown"),
-                    "source_type": chunk.get("metadata", {}).get("source_type", "unknown"),
+                    "source_type": chunk.get("metadata", {}).get(
+                        "source_type", "unknown"
+                    ),
                 },
             }
             for chunk in result.get("retrieved_chunks", [])
         ]
-        
+
         return {
             "answer": result.get("answer", "I don't know based on the uploaded data."),
             "retrieved_chunks": formatted_chunks,
@@ -393,20 +416,21 @@ async def query_with_langgraph(
             "confidence": result.get("confidence", 0.0),
             "metadata": result.get("metadata", {}),
         }
-        
+
     except Exception as exc:
-        logger.error(f"LangGraph query failed: {type(exc).__name__}: {exc}", exc_info=True)
+        logger.error(
+            f"LangGraph query failed: {type(exc).__name__}: {exc}", exc_info=True
+        )
         observe_rag_query(
             duration_seconds=start_timer() - started,
             status="error",
             workflow=workflow,
         )
         raise HTTPException(
-            status_code=500,
-            detail=f"LangGraph query failed: {str(exc)}"
+            status_code=500, detail=f"LangGraph query failed: {str(exc)}"
         ) from exc
     finally:
-        if 'result' in locals():
+        if "result" in locals():
             observe_rag_query(
                 duration_seconds=start_timer() - started,
                 status="success",
@@ -449,10 +473,14 @@ async def list_documents(
                     "file_name": doc.get("filename", ""),
                     "source_type": doc.get("file_type", "unknown"),
                     "chunks": doc.get("metadata", {}).get("chunks_stored", 0),
-                    "storage_backend": doc.get("metadata", {}).get("storage_backend", "local"),
+                    "storage_backend": doc.get("metadata", {}).get(
+                        "storage_backend", "local"
+                    ),
                     "storage_path": doc.get("path", ""),
                     "storage_url": doc.get("metadata", {}).get("storage_url", ""),
-                    "analysis_report": doc.get("metadata", {}).get("analysis_report", {}),
+                    "analysis_report": doc.get("metadata", {}).get(
+                        "analysis_report", {}
+                    ),
                 }
                 for doc in unique_docs.values()
             ],
@@ -460,7 +488,9 @@ async def list_documents(
         }
     except Exception as exc:
         logger.error(f"Failed to list documents: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list documents: {str(exc)}"
+        ) from exc
 
 
 @router.delete("/documents/{document_id}", response_model=dict[str, Any])
@@ -481,7 +511,9 @@ async def delete_document(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(f"Failed to delete document {document_id}: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete document: {str(exc)}"
+        ) from exc
 
 
 @router.delete("/documents/by-name/{file_name}", response_model=dict[str, Any])
@@ -491,7 +523,9 @@ async def delete_document_by_name(
     current_user: dict = Depends(require_admin),  # Admin only
 ):
     """Delete all uploaded versions of a file by original filename. **Admin only.**"""
-    logger.info(f"Admin {current_user.get('username')} deleting documents by name: {file_name}")
+    logger.info(
+        f"Admin {current_user.get('username')} deleting documents by name: {file_name}"
+    )
     try:
         decoded_name = unquote(file_name)
         result = await rag_service.delete_documents_by_filename(decoded_name)
@@ -503,7 +537,9 @@ async def delete_document_by_name(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(f"Failed to delete documents by name {file_name}: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete document(s): {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete document(s): {str(exc)}"
+        ) from exc
 
 
 @router.get("/documents/preview/{file_name}", response_model=dict[str, Any])
@@ -516,40 +552,44 @@ async def get_file_preview(
     current_user: dict = Depends(require_user),  # Authenticated users only
 ):
     """Get paginated preview of file data for dashboard display.
-    
+
     Args:
         file_name: Name of the uploaded file
         page: Page number (1-indexed)
         page_size: Number of rows per page
         sheet_name: Excel sheet name (optional, defaults to first sheet)
         rag_service: RAG service instance
-    
+
     Returns:
         File data with columns, rows, and pagination info
     """
     import tempfile
     from pathlib import Path
-    
+
     try:
         decoded_name = unquote(file_name)
         logger.info(f"Preview request for file: {decoded_name}")
-        
+
         # Get document metadata to find file storage info
         documents = await rag_service.get_all_documents()
         logger.info(f"Found {len(documents)} documents")
         if documents:
             logger.info(f"First document filename: {documents[0].get('filename')}")
             logger.info(f"Looking for: {decoded_name}")
-        
+
         doc = next((d for d in documents if d.get("filename") == decoded_name), None)
-        
+
         if not doc:
-            logger.warning(f"Document not found. Available files: {[d.get('filename') for d in documents]}")
-            raise HTTPException(status_code=404, detail=f"File not found: {decoded_name}")
-        
+            logger.warning(
+                f"Document not found. Available files: {[d.get('filename') for d in documents]}"
+            )
+            raise HTTPException(
+                status_code=404, detail=f"File not found: {decoded_name}"
+            )
+
         storage_backend = doc.get("metadata", {}).get("storage_backend", "local")
         temp_file = None
-        
+
         try:
             if storage_backend == "minio":
                 # First check if file exists in mounted minio-data directory
@@ -561,14 +601,19 @@ async def get_file_preview(
                         # Parse s3://bucket/object_name -> extract object_name
                         parts = storage_path.replace("s3://", "").split("/", 1)
                         storage_object = parts[1] if len(parts) > 1 else ""
-                        
+
                 if not storage_object:
-                    raise HTTPException(status_code=404, detail="MinIO object name not found in metadata")
-                
+                    raise HTTPException(
+                        status_code=404,
+                        detail="MinIO object name not found in metadata",
+                    )
+
                 # Check mounted minio-data directory first (for backward compatibility)
                 minio_data_path = Path("/app/minio-data") / storage_object
                 if minio_data_path.exists() and minio_data_path.is_file():
-                    logger.info(f"Using file from mounted minio-data: {minio_data_path}")
+                    logger.info(
+                        f"Using file from mounted minio-data: {minio_data_path}"
+                    )
                     file_path_obj = minio_data_path
                 else:
                     # Fall back to downloading from MinIO if service is enabled
@@ -577,24 +622,32 @@ async def get_file_preview(
                     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                     temp_path = Path(temp_file.name)
                     temp_file.close()
-                    
+
                     # Download file from MinIO
-                    success = rag_service.minio_service.download_file(storage_object, temp_path)
+                    success = rag_service.minio_service.download_file(
+                        storage_object, temp_path
+                    )
                     if not success:
-                        raise HTTPException(status_code=500, detail="Failed to download file from MinIO")
-                    
+                        raise HTTPException(
+                            status_code=500, detail="Failed to download file from MinIO"
+                        )
+
                     file_path_obj = temp_path
             else:
                 # Local storage
                 file_path = doc.get("path") or doc.get("storage_path")
                 if not file_path:
-                    raise HTTPException(status_code=404, detail="File path not found in metadata")
-                
+                    raise HTTPException(
+                        status_code=404, detail="File path not found in metadata"
+                    )
+
                 file_path_obj = Path(file_path)
-                
+
                 if not file_path_obj.exists():
-                    raise HTTPException(status_code=404, detail=f"File not found on disk: {file_path}")
-            
+                    raise HTTPException(
+                        status_code=404, detail=f"File not found on disk: {file_path}"
+                    )
+
             # Get file preview using file service
             preview_data = rag_service.file_service.get_file_data_preview(
                 file_path=file_path_obj,
@@ -602,27 +655,31 @@ async def get_file_preview(
                 page_size=page_size,
                 sheet_name=sheet_name,
             )
-            
+
             return {
                 "file_name": decoded_name,
                 **preview_data,
             }
-        
+
         finally:
             # Clean up temp file if it was created
             if temp_file and Path(temp_file.name).exists():
                 try:
                     Path(temp_file.name).unlink()
                 except Exception as exc:
-                    logger.warning(f"Failed to clean up temp file {temp_file.name}: {exc}")
-        
+                    logger.warning(
+                        f"Failed to clean up temp file {temp_file.name}: {exc}"
+                    )
+
     except HTTPException:
         raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(f"Failed to get file preview for {file_name}: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to get file preview: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get file preview: {str(exc)}"
+        ) from exc
 
 
 @router.get("/documents/analytics/{file_name}", response_model=dict[str, Any])
@@ -633,32 +690,34 @@ async def get_file_analytics(
     current_user: dict = Depends(require_user),  # Authenticated users only
 ):
     """Get analytics and statistics for charts/graphs visualization.
-    
+
     Args:
         file_name: Name of the uploaded file
         sheet_name: Excel sheet name (optional, defaults to first sheet)
         rag_service: RAG service instance
-    
+
     Returns:
         Analytics data with statistics and metrics for visualization
     """
     import tempfile
     from pathlib import Path
-    
+
     try:
         decoded_name = unquote(file_name)
         logger.info(f"Analytics request for file: {decoded_name}")
-        
+
         # Get document metadata to find file storage info
         documents = await rag_service.get_all_documents()
         doc = next((d for d in documents if d.get("filename") == decoded_name), None)
-        
+
         if not doc:
-            raise HTTPException(status_code=404, detail=f"File not found: {decoded_name}")
-        
+            raise HTTPException(
+                status_code=404, detail=f"File not found: {decoded_name}"
+            )
+
         storage_backend = doc.get("metadata", {}).get("storage_backend", "local")
         temp_file = None
-        
+
         try:
             if storage_backend == "minio":
                 # First check if file exists in mounted minio-data directory
@@ -670,14 +729,19 @@ async def get_file_analytics(
                         # Parse s3://bucket/object_name -> extract object_name
                         parts = storage_path.replace("s3://", "").split("/", 1)
                         storage_object = parts[1] if len(parts) > 1 else ""
-                        
+
                 if not storage_object:
-                    raise HTTPException(status_code=404, detail="MinIO object name not found in metadata")
-                
+                    raise HTTPException(
+                        status_code=404,
+                        detail="MinIO object name not found in metadata",
+                    )
+
                 # Check mounted minio-data directory first (for backward compatibility)
                 minio_data_path = Path("/app/minio-data") / storage_object
                 if minio_data_path.exists() and minio_data_path.is_file():
-                    logger.info(f"Using file from mounted minio-data: {minio_data_path}")
+                    logger.info(
+                        f"Using file from mounted minio-data: {minio_data_path}"
+                    )
                     file_path_obj = minio_data_path
                 else:
                     # Fall back to downloading from MinIO if service is enabled
@@ -686,55 +750,68 @@ async def get_file_analytics(
                     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                     temp_path = Path(temp_file.name)
                     temp_file.close()
-                    
+
                     # Download file from MinIO
-                    success = rag_service.minio_service.download_file(storage_object, temp_path)
+                    success = rag_service.minio_service.download_file(
+                        storage_object, temp_path
+                    )
                     if not success:
-                        raise HTTPException(status_code=500, detail="Failed to download file from MinIO")
-                    
+                        raise HTTPException(
+                            status_code=500, detail="Failed to download file from MinIO"
+                        )
+
                     file_path_obj = temp_path
             else:
                 # Local storage
                 file_path = doc.get("path") or doc.get("storage_path")
                 if not file_path:
-                    raise HTTPException(status_code=404, detail="File path not found in metadata")
-                
+                    raise HTTPException(
+                        status_code=404, detail="File path not found in metadata"
+                    )
+
                 file_path_obj = Path(file_path)
-                
+
                 if not file_path_obj.exists():
-                    raise HTTPException(status_code=404, detail=f"File not found on disk: {file_path}")
-            
+                    raise HTTPException(
+                        status_code=404, detail=f"File not found on disk: {file_path}"
+                    )
+
             # Get analytics using file service
             analytics_data = rag_service.file_service.get_file_analytics(
                 file_path=file_path_obj,
                 sheet_name=sheet_name,
             )
-            
+
             return {
                 "file_name": decoded_name,
                 **analytics_data,
             }
-        
+
         finally:
             # Clean up temp file if it was created
             if temp_file and Path(temp_file.name).exists():
                 try:
                     Path(temp_file.name).unlink()
                 except Exception as exc:
-                    logger.warning(f"Failed to clean up temp file {temp_file.name}: {exc}")
-        
+                    logger.warning(
+                        f"Failed to clean up temp file {temp_file.name}: {exc}"
+                    )
+
     except HTTPException:
         raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(f"Failed to get file analytics for {file_name}: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to get file analytics: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get file analytics: {str(exc)}"
+        ) from exc
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Semantic Cache Management Endpoints
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/cache/stats", response_model=dict[str, Any], tags=["cache"])
 async def get_cache_stats(
@@ -749,7 +826,10 @@ async def get_cache_stats(
     - Similarity threshold in use
     """
     if not cache:
-        return {"enabled": False, "reason": "Redis not available or REDIS_ENABLED=false"}
+        return {
+            "enabled": False,
+            "reason": "Redis not available or REDIS_ENABLED=false",
+        }
     stats = await cache.get_stats()
     return stats
 
@@ -767,7 +847,9 @@ async def invalidate_cache(
     if not cache:
         return {"enabled": False, "deleted": 0, "reason": "Redis not available"}
     deleted = await cache.invalidate_all()
-    logger.info(f"Admin {current_user.get('username')} invalidated semantic cache ({deleted} keys)")
+    logger.info(
+        f"Admin {current_user.get('username')} invalidated semantic cache ({deleted} keys)"
+    )
     return {
         "message": "Semantic cache cleared successfully",
         "keys_deleted": deleted,

@@ -1,8 +1,9 @@
 """Tests for minio_service module."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from app.services.minio_service import MinioService
 
@@ -103,7 +104,9 @@ class TestMinioService:
         assert result["storage_object"] == ""
 
     @patch("minio.Minio")
-    def test_upload_file_success(self, mock_minio_class, mock_settings_enabled, tmp_path):
+    def test_upload_file_success(
+        self, mock_minio_class, mock_settings_enabled, tmp_path
+    ):
         """Test successful file upload to MinIO."""
         mock_client = Mock()
         mock_client.bucket_exists.return_value = True
@@ -123,7 +126,9 @@ class TestMinioService:
         mock_client.fput_object.assert_called_once()
 
     @patch("minio.Minio")
-    def test_upload_file_minio_failure_fallback(self, mock_minio_class, mock_settings_enabled, tmp_path):
+    def test_upload_file_minio_failure_fallback(
+        self, mock_minio_class, mock_settings_enabled, tmp_path
+    ):
         """Test fallback to local when MinIO upload fails."""
         mock_client = Mock()
         mock_client.bucket_exists.return_value = True
@@ -140,12 +145,14 @@ class TestMinioService:
         assert result["storage_path"] == str(test_file)
 
     @patch("minio.Minio")
-    def test_upload_file_lazy_reconnect(self, mock_minio_class, mock_settings_enabled, tmp_path):
+    def test_upload_file_lazy_reconnect(
+        self, mock_minio_class, mock_settings_enabled, tmp_path
+    ):
         """Test lazy reconnection when MinIO becomes available."""
         # First call fails
         mock_minio_class.side_effect = [
             Exception("Not available"),
-            Mock(bucket_exists=Mock(return_value=True))
+            Mock(bucket_exists=Mock(return_value=True)),
         ]
 
         service = MinioService()
@@ -174,7 +181,9 @@ class TestMinioService:
             assert service.bucket == "test-bucket"
 
     @patch("minio.Minio")
-    def test_upload_file_generates_unique_object_names(self, mock_minio_class, mock_settings_enabled, tmp_path):
+    def test_upload_file_generates_unique_object_names(
+        self, mock_minio_class, mock_settings_enabled, tmp_path
+    ):
         """Test that uploaded objects get unique names."""
         mock_client = Mock()
         mock_client.bucket_exists.return_value = True

@@ -119,8 +119,7 @@ class SemanticCacheService:
                 if result:
                     await self._incr_stat("hits")
                     logger.info(
-                        f"Cache HIT (score={best_score:.3f}) for: "
-                        f"{question[:60]}…"
+                        f"Cache HIT (score={best_score:.3f}) for: " f"{question[:60]}…"
                     )
                     result["_cache"] = {
                         "hit": True,
@@ -175,9 +174,7 @@ class SemanticCacheService:
             #  accumulate. For simplicity we skip per-entry TTL here.)
             await self._incr_stat("total")
 
-            logger.info(
-                f"Cache SET [{cache_id[:8]}] for: {question[:60]}…"
-            )
+            logger.info(f"Cache SET [{cache_id[:8]}] for: {question[:60]}…")
 
         except Exception as exc:
             logger.warning(f"Cache store error (skipping): {exc}")
