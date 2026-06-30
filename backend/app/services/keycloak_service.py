@@ -7,9 +7,8 @@ import time
 from typing import Optional
 
 import httpx
-from jose import JWTError, jwt
-
 from app.utils.config import settings
+from jose import JWTError, jwt
 
 logger = logging.getLogger(__name__)
 

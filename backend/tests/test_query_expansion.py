@@ -1,7 +1,6 @@
 """Tests for query expansion."""
 
 import pytest
-
 from app.rag.query_expansion import get_query_expander
 
 

@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta
 
 import pytest
-
 from app.services import auth_service
 
 

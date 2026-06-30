@@ -5,13 +5,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import UploadFile
-
 from app.models.schemas import DocumentSummary
 from app.rag.embeddings import get_embeddings
 from app.rag.generator import generate_answer
 from app.services.file_service import FileService
 from app.vectorstore.faiss_store import VectorStoreManager
+from fastapi import UploadFile
 
 
 class RagPipeline:

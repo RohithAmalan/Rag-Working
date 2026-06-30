@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from app.services.minio_service import MinioService
 
 

@@ -10,11 +10,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-
 from app.db.mongo import get_database
 from app.utils.dependencies import get_current_user, require_admin
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

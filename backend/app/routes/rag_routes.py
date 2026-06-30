@@ -1,8 +1,6 @@
 from typing import Any
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-
 from app.models.schemas import (DocumentsResponse, QueryRequest, QueryResponse,
                                 RetrievedChunk, SourceItem)
 from app.rag.generator import generate_answer
@@ -14,6 +12,7 @@ from app.utils.dependencies import (get_current_user, require_admin,
                                     require_user)
 from app.utils.logger import get_logger
 from app.utils.metrics import observe_rag_query, observe_upload, start_timer
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 logger = get_logger(__name__)
 

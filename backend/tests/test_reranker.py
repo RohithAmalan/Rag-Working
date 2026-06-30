@@ -1,7 +1,6 @@
 """Tests for reranker service."""
 
 import pytest
-
 from app.rag.reranker import get_reranker_service
 
 

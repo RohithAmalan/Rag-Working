@@ -5,9 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, StateGraph
-
 from app.rag.langgraph_nodes import (analyze_query_node,
                                      create_aggregation_retrieve_node,
                                      create_exact_match_retrieve_node,
@@ -17,6 +14,8 @@ from app.rag.langgraph_nodes import (analyze_query_node,
                                      validate_node)
 from app.rag.langgraph_state import AgentState
 from app.services.mongo_vector_service import MongoVectorService
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
 
 logger = logging.getLogger(__name__)
 
@@ -253,8 +252,6 @@ def build_multi_agent_graph(mongo_service: MongoVectorService) -> Any:
     Returns:
         Compiled LangGraph workflow
     """
-    from langgraph.graph import END, StateGraph
-
     from app.rag.langgraph_nodes import (aggregate_results_node,
                                          analyze_query_node,
                                          create_aggregation_retrieve_node,
@@ -267,6 +264,7 @@ def build_multi_agent_graph(mongo_service: MongoVectorService) -> Any:
                                          generate_comparison_node,
                                          generate_node, validate_node)
     from app.rag.langgraph_state import MultiStepState
+    from langgraph.graph import END, StateGraph
 
     logger.info("Building Phase 3 LangGraph multi-agent workflow")
 

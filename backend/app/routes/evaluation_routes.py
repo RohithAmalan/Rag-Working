@@ -3,12 +3,11 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-
 from app.rag.evaluator import get_evaluator
 from app.utils.constants import Roles
 from app.utils.dependencies import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

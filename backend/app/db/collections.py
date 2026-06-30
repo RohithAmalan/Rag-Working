@@ -6,11 +6,10 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
-
 from app.services.embedding_service import cosine_similarity
 from app.utils.config import settings
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 

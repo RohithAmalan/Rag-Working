@@ -3,10 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import app
 from app.utils.constants import Roles
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)

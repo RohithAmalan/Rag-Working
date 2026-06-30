@@ -2,7 +2,6 @@
 
 import pandas as pd
 import pytest
-
 from app.rag.chunking import dataframe_to_documents
 
 

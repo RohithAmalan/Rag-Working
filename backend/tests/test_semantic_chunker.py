@@ -1,7 +1,6 @@
 """Tests for semantic chunking."""
 
 import pytest
-
 from app.rag.semantic_chunker import get_semantic_chunker
 
 

@@ -14,11 +14,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import UploadFile
-from fastapi.testclient import TestClient
-
 from app.main import app
 from app.services.file_service import FileService
+from fastapi import UploadFile
+from fastapi.testclient import TestClient
 
 
 class TestInputValidation:

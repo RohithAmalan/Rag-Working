@@ -3,12 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from bson import ObjectId
-
 from app.services.mongo_vector_service import (MongoVectorService,
                                                _build_file_hint_filter,
                                                _extract_exact_terms,
                                                _matches_file_hints)
+from bson import ObjectId
 
 
 class TestExtractExactTerms:

@@ -6,15 +6,14 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import UploadFile
-from motor.motor_asyncio import AsyncIOMotorDatabase
-
 from app.rag.chunking import chunk_pdf_texts, dataframe_to_documents
 from app.services.file_service import FileService
 from app.services.langgraph_rag_service import LangGraphRAGService
 from app.services.minio_service import MinioService
 from app.services.mongo_vector_service import MongoVectorService
 from app.utils.config import settings
+from fastapi import UploadFile
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 

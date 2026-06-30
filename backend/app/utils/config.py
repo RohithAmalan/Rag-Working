@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     # CORS — comma-separated list of allowed origins.
     # Leave empty to use the default localhost dev ports.
     # Example: CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
-    cors_allowed_origins: str = Field(default="", validation_alias="CORS_ALLOWED_ORIGINS")
+    cors_allowed_origins: str = Field(
+        default="", validation_alias="CORS_ALLOWED_ORIGINS"
+    )
 
     # LLM Configuration
     groq_api_key: str = ""

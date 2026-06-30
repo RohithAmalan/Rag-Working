@@ -1,12 +1,12 @@
 """FastAPI dependencies for authentication and authorization."""
 
 import logging
-from typing import Optional, List
-from fastapi import Header, HTTPException, Depends
+from typing import List, Optional
 
 from app.services import auth_service
 from app.services.keycloak_service import keycloak_service
-from app.utils.constants import Roles, APIMessages
+from app.utils.constants import APIMessages, Roles
+from fastapi import Depends, Header, HTTPException
 
 logger = logging.getLogger(__name__)
 

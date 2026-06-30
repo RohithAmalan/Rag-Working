@@ -7,9 +7,6 @@ warnings.filterwarnings(
     "ignore", category=UserWarning, module="multiprocessing.resource_tracker"
 )
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-
 from app.db.mongo import close_mongo_connection, connect_to_mongo, get_database
 from app.routes.audit_routes import router as audit_router
 from app.routes.auth_routes import router as auth_router
@@ -22,7 +19,10 @@ from app.services.rag_service import RagService
 from app.services.semantic_cache_service import SemanticCacheService
 from app.utils.config import settings
 from app.utils.logger import get_logger
-from app.utils.metrics import observe_http_request, set_storage_backend, start_timer
+from app.utils.metrics import (observe_http_request, set_storage_backend,
+                               start_timer)
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 logger = get_logger(__name__)
 

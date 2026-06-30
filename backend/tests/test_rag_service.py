@@ -4,9 +4,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from fastapi import UploadFile
-
 from app.services.rag_service import RagService
+from fastapi import UploadFile
 
 
 class TestRagService:

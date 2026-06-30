@@ -4,9 +4,8 @@ import logging
 import re
 from typing import Dict, List, Tuple
 
-from groq import Groq
-
 from app.utils.config import settings
+from groq import Groq
 
 logger = logging.getLogger(__name__)
 

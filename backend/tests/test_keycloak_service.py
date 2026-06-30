@@ -3,10 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from jose import jwt
-
 from app.services.keycloak_service import KeycloakService
 from app.utils.constants import Roles
+from jose import jwt
 
 
 @pytest.fixture

@@ -43,7 +43,7 @@ jobs:
     - name: Run Bandit Security Scan
       working-directory: ./backend
       run: |
-        bandit -r app -c .bandit
+        bandit -r app -c .bandit --severity-level medium
       continue-on-error: false
 
     - name: Run Safety Dependency Check

@@ -70,7 +70,7 @@ jobs:
         if: matrix.language == 'javascript-typescript'
         run: |
           cd frontend
-          npm ci
+          npm install --no-fund || npm install --legacy-peer-deps
 
       # Perform CodeQL Analysis
       - name: Perform CodeQL Analysis
@@ -162,7 +162,7 @@ jobs:
       - name: Install Node dependencies
         run: |
           cd frontend
-          npm ci
+          npm install --no-fund || npm install --legacy-peer-deps
 
       - name: Run ESLint
         run: |

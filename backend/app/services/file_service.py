@@ -5,10 +5,9 @@ from typing import Any
 from uuid import uuid4
 
 import pandas as pd
+from app.rag.chunking import chunk_pdf_texts, dataframe_to_documents
 from fastapi import UploadFile
 from pypdf import PdfReader
-
-from app.rag.chunking import chunk_pdf_texts, dataframe_to_documents
 
 
 class FileService:

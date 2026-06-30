@@ -3,9 +3,8 @@
 import logging
 from typing import Dict, List
 
-from sentence_transformers import CrossEncoder
-
 from app.utils.config import settings
+from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
 

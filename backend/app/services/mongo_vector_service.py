@@ -6,12 +6,11 @@ import logging
 import re
 from typing import Any
 
-from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorDatabase
-
 from app.db.collections import ChunksCollection, DocumentsCollection
 from app.services.embedding_service import generate_batch_embeddings
 from app.utils.config import settings
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 

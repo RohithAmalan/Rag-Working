@@ -4,14 +4,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Response
-from jose import jwt as jose_jwt
-
 from app.models.auth import LoginRequest, LoginResponse, User
 from app.services import auth_service
 from app.services.keycloak_service import keycloak_service
 from app.services.n8n_service import notify_n8n_event
 from app.utils.constants import APIMessages, Roles
+from fastapi import APIRouter, Header, HTTPException, Response
+from jose import jwt as jose_jwt
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
 """Tests for application constants."""
 
 import pytest
-
 from app.utils.constants import APIMessages, Roles
 
 

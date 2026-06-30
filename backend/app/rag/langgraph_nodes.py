@@ -746,10 +746,9 @@ async def decompose_query_node(state: AgentState) -> dict[str, Any]:
 
     Uses LLM to break down complex questions into executable sub-queries.
     """
-    from groq import AsyncGroq
-
     from app.rag.langgraph_state import MultiStepState
     from app.utils.config import GROQ_API_KEY
+    from groq import AsyncGroq
 
     question = state["question"]
     requires_cross_file = state.get("requires_cross_file", False)

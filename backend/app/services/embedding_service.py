@@ -7,9 +7,8 @@ import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
-
 from app.utils.config import settings
+from sentence_transformers import SentenceTransformer
 
 if TYPE_CHECKING:
     pass

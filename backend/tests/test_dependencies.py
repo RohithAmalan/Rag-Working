@@ -3,12 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
-
 from app.utils.constants import APIMessages, Roles
 from app.utils.dependencies import (get_current_user,
                                     get_current_user_optional, require_admin,
                                     require_user)
+from fastapi import HTTPException
 
 
 @pytest.mark.asyncio

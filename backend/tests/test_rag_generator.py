@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.rag.generator import _build_system_prompt, _list_all_records_answer
 
 

@@ -1,7 +1,6 @@
 """Tests for citation generator."""
 
 import pytest
-
 from app.rag.citation_generator import get_citation_generator
 
 

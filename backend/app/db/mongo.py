@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+from app.utils.config import settings
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import OperationFailure
-
-from app.utils.config import settings
 
 logger = logging.getLogger(__name__)
 

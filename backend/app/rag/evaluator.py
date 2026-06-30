@@ -20,8 +20,8 @@ class RAGEvaluator:
     def _load_metrics(self):
         """Load RAGAS metrics."""
         try:
-            from ragas.metrics import (answer_relevancy,  # type: ignore
-                                       context_precision, context_recall,
+            from ragas.metrics import answer_relevancy  # type: ignore
+            from ragas.metrics import (context_precision, context_recall,
                                        faithfulness)
 
             self.metrics = {

@@ -5,9 +5,8 @@ from unittest.mock import AsyncMock, Mock, mock_open, patch
 
 import pandas as pd
 import pytest
-from fastapi import UploadFile
-
 from app.services.file_service import FileService
+from fastapi import UploadFile
 
 
 class TestFileService:

@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, Response
-
 from app.models.schemas import HealthResponse
 from app.utils.config import settings
 from app.utils.dependencies import require_admin
 from app.utils.metrics import metrics_response
+from fastapi import APIRouter, Depends, Response
 
 router = APIRouter(tags=["system"])
 

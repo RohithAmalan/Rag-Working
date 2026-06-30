@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import pytest
-
 from app.services.embedding_service import (_embedding_model,
                                             cosine_similarity,
                                             generate_batch_embeddings,

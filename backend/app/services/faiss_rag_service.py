@@ -6,12 +6,11 @@ import re
 from collections import defaultdict
 from typing import Any
 
-from fastapi import UploadFile
-
 from app.rag.pipeline import RagPipeline
 from app.services.minio_service import MinioService
 from app.utils.config import settings
 from app.utils.logger import get_logger
+from fastapi import UploadFile
 
 logger = get_logger(__name__)
 
