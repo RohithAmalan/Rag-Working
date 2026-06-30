@@ -1,16 +1,20 @@
 """
 Audit Routes — receives events from n8n Workflow 03 (Error Alert & Audit Logger).
 Stores everything in MongoDB audit_events and audit_alerts collections.
+
+Write endpoints (/log, /alert) require a valid Bearer token.
+Read endpoints (/events, /alerts) require admin role.
 """
 
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.db.mongo import get_database
+from app.utils.dependencies import get_current_user, require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +53,17 @@ def _now_iso() -> str:
 
 
 @router.post("/log", summary="Write an audit event to MongoDB")
-async def audit_log(payload: AuditLogRequest):
+async def audit_log(
+    payload: AuditLogRequest,
+    _current_user: dict = Depends(get_current_user),  # requires valid token
+):
     """
     Called by n8n Workflow 03 for EVERY incoming RAG event.
     Stores the enriched event in the audit_events collection.
+    Requires: authenticated user (any role).
     """
     try:
-        db = get_database()  # sync call
+        db = get_database()
         doc = {
             "event": payload.event,
             "severity": payload.severity,
@@ -84,13 +92,17 @@ async def audit_log(payload: AuditLogRequest):
 
 
 @router.post("/alert", summary="Write a critical/warning alert to MongoDB")
-async def audit_alert(payload: AuditAlertRequest):
+async def audit_alert(
+    payload: AuditAlertRequest,
+    _current_user: dict = Depends(get_current_user),  # requires valid token
+):
     """
     Called by n8n Workflow 03 only when severity >= warning.
     Stores the formatted alert in the audit_alerts collection.
+    Requires: authenticated user (any role).
     """
     try:
-        db = get_database()  # sync call
+        db = get_database()
         doc = {
             "alert_type": payload.alert_type,
             "message": payload.message,
@@ -118,11 +130,14 @@ async def audit_alert(payload: AuditAlertRequest):
         raise HTTPException(status_code=500, detail=f"Audit alert failed: {exc}")
 
 
-@router.get("/events", summary="List recent audit events")
-async def list_audit_events(limit: int = 50):
-    """Returns the most recent audit events from MongoDB."""
+@router.get("/events", summary="List recent audit events (admin only)")
+async def list_audit_events(
+    limit: int = 50,
+    _admin: dict = Depends(require_admin),  # requires admin role
+):
+    """Returns the most recent audit events from MongoDB. Requires: admin role."""
     try:
-        db = get_database()  # sync call
+        db = get_database()
         cursor = (
             db["audit_events"].find({}, {"_id": 0}).sort("logged_at", -1).limit(limit)
         )
@@ -132,11 +147,14 @@ async def list_audit_events(limit: int = 50):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/alerts", summary="List recent critical/warning alerts")
-async def list_audit_alerts(limit: int = 20):
-    """Returns the most recent critical/warning alerts from MongoDB."""
+@router.get("/alerts", summary="List recent critical/warning alerts (admin only)")
+async def list_audit_alerts(
+    limit: int = 20,
+    _admin: dict = Depends(require_admin),  # requires admin role
+):
+    """Returns the most recent critical/warning alerts from MongoDB. Requires: admin role."""
     try:
-        db = get_database()  # sync call
+        db = get_database()
         cursor = (
             db["audit_alerts"].find({}, {"_id": 0}).sort("logged_at", -1).limit(limit)
         )

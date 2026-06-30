@@ -1,36 +1,57 @@
-"""Simple authentication service with in-memory user storage."""
+"""Legacy in-process authentication service (used when Keycloak is not configured).
 
+Passwords are stored as bcrypt hashes — never in plaintext.
+Actual credentials must be set via the LEGACY_USERS environment variable as
+a JSON string, e.g.:
+    LEGACY_USERS='{"admin":"$2b$12$...","demo":"$2b$12$..."}'
+
+A helper to generate a hash:
+    python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
+"""
+
+import json
+import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-# Simple in-memory storage for demo purposes
-# In production, use a database with hashed passwords
-DEMO_USERS = {
-    "admin": "admin123",  # username: password
-    "demo": "demo123",
-    "user": "user123",
-}
+import bcrypt
+
+# ---------------------------------------------------------------------------
+# User store — loaded from LEGACY_USERS env var (bcrypt hashed passwords).
+# Falls back to a safe empty dict; login will fail until env var is set.
+# ---------------------------------------------------------------------------
+_raw = os.environ.get("LEGACY_USERS", "")
+try:
+    DEMO_USERS: dict[str, str] = json.loads(_raw) if _raw else {}
+except (json.JSONDecodeError, ValueError):
+    DEMO_USERS = {}
 
 # Token storage: {token: {username, expires_at}}
 ACTIVE_TOKENS: dict[str, dict] = {}
 
-# Token expiry (24 hours)
-TOKEN_EXPIRY_HOURS = 24
+# Token expiry (15 minutes — matches Keycloak access token TTL)
+TOKEN_EXPIRY_MINUTES = 15
 
 
 def authenticate_user(username: str, password: str) -> bool:
     """
-    Authenticate user credentials.
+    Authenticate user credentials using bcrypt hash comparison.
 
     Args:
         username: Username
-        password: Password
+        password: Plaintext password (compared against stored bcrypt hash)
 
     Returns:
         True if credentials are valid, False otherwise
     """
-    return DEMO_USERS.get(username) == password
+    hashed = DEMO_USERS.get(username)
+    if not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except Exception:
+        return False
 
 
 def create_access_token(username: str) -> str:
@@ -43,17 +64,13 @@ def create_access_token(username: str) -> str:
     Returns:
         Access token string
     """
-    # Generate secure random token
     token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=TOKEN_EXPIRY_MINUTES)
 
-    # Calculate expiry time
-    expires_at = datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS)
-
-    # Store token
     ACTIVE_TOKENS[token] = {
         "username": username,
         "expires_at": expires_at,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc),
     }
 
     return token
@@ -74,9 +91,7 @@ def verify_token(token: str) -> Optional[str]:
     if not token_data:
         return None
 
-    # Check if token expired
-    if datetime.utcnow() > token_data["expires_at"]:
-        # Remove expired token
+    if datetime.now(timezone.utc) > token_data["expires_at"]:
         ACTIVE_TOKENS.pop(token, None)
         return None
 
@@ -99,9 +114,9 @@ def revoke_token(token: str) -> bool:
     return False
 
 
-def cleanup_expired_tokens():
-    """Remove all expired tokens from storage."""
-    now = datetime.utcnow()
+def cleanup_expired_tokens() -> int:
+    """Remove all expired tokens from storage. Returns count of removed tokens."""
+    now = datetime.now(timezone.utc)
     expired = [
         token for token, data in ACTIVE_TOKENS.items() if now > data["expires_at"]
     ]
