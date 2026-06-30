@@ -34,7 +34,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm install --no-fund || npm ci --legacy-peer-deps
+        run: npm ci
       
       - name: Lint code
         working-directory: ./frontend
