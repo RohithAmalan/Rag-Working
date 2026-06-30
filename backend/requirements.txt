@@ -1,24 +1,23 @@
-# ── Web framework ──────────────────────────────────────────────────────────────
+# Web framework
 fastapi
 uvicorn[standard]
-redis[hiredis]
 python-multipart
 
-# ── Auth / Security ────────────────────────────────────────────────────────────
+# Auth / Security
 python-jose[cryptography]
-bcrypt                        # password hashing for legacy auth service
-httpx                         # async HTTP client (Keycloak JWKS, n8n webhooks)
+bcrypt
+httpx
 
-# ── Data / File parsing ────────────────────────────────────────────────────────
+# Data / File parsing
 pandas
 openpyxl
 pypdf
 
-# ── Config ─────────────────────────────────────────────────────────────────────
+# Config
 pydantic-settings
 python-dotenv
 
-# ── LLM / RAG ──────────────────────────────────────────────────────────────────
+# LLM / RAG
 groq
 langchain
 langchain-community
@@ -26,44 +25,44 @@ langchain-openai
 langgraph
 langgraph-checkpoint
 
-# ── Embeddings (CPU-only torch build) ─────────────────────────────────────────
+# Embeddings (CPU-only torch build)
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 sentence-transformers
 
-# ── Vector stores ──────────────────────────────────────────────────────────────
+# Vector stores
 faiss-cpu
 motor
 pymongo
 
-# ── Storage / Infrastructure ───────────────────────────────────────────────────
+# Storage / Infrastructure
 minio
-redis
+redis[hiredis]
 
-# ── Observability ──────────────────────────────────────────────────────────────
+# Observability
 prometheus-client
 
-# ── File watching (inbox-watcher service) ──────────────────────────────────────
+# File watching
 watchdog
 
-# ── Testing ────────────────────────────────────────────────────────────────────
+# Testing
 pytest
 pytest-asyncio
 pytest-cov
 pytest-mock
 
-# ── RAG evaluation ─────────────────────────────────────────────────────────────
+# RAG evaluation
 ragas
 datasets
 
-# ── Static analysis / security scanning ───────────────────────────────────────
+# Static analysis / security scanning
 bandit
 safety
 pip-audit
 
-# ── CVE / vulnerability pin-fixes ──────────────────────────────────────────────
-filelock>=3.20.1      # CVE-2025-68146 TOCTOU race condition
-langsmith>=0.7.0      # SSRF and data exfiltration vulnerabilities
-nltk==3.9.2           # pinned to avoid build resolution issues
-lxml>=6.1.0           # XML entity expansion vulnerabilities
-idna>=3.12            # denial of service vulnerabilities
+# CVE / vulnerability pin-fixes
+filelock>=3.20.1
+langsmith>=0.7.0
+nltk==3.9.2
+lxml>=6.1.0
+idna>=3.12
